@@ -20,6 +20,9 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.Typeface
@@ -157,6 +160,7 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        savedStateRegistryController.performAttach()
         savedStateRegistryController.performRestore(savedInstanceState)
         UIHelper.applySystemBarInsets(this)
 
@@ -170,6 +174,15 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
 
         setResult(RESULT_CANCELED)
 
+        // MapActivity is a plain Activity, so nothing registers the lifecycle
+        // owners on the view tree for us. Compose looks them up there
+        // (ViewTreeLifecycleOwner etc.) and crashes if they are missing. Set
+        // them on the decor view so popups and dialogs find them too.
+        window.decorView.let { root ->
+            root.setViewTreeLifecycleOwner(this)
+            root.setViewTreeViewModelStoreOwner(this)
+            root.setViewTreeSavedStateRegistryOwner(this)
+        }
         val composeView = ComposeView(this)
         composeView.setContent {
             MapScreen()
@@ -205,6 +218,11 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
             }
         }
         super.onPause()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        savedStateRegistryController.performSave(outState)
     }
 
     override fun onStop() {
