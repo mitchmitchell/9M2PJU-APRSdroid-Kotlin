@@ -39,9 +39,9 @@ class ProfileImportActivity : ComponentActivity() {
         UIHelper.applySystemBarInsets(this)
         Log.d(tag, "created: $intent")
 
-        setContent {
+        setContent { org.aprsdroid.app.ui.theme.AprsTheme {
             ImportProgressScreen()
-        }
+        } }
 
         // Perform the import on a background thread
         Thread { importConfig() }.start()

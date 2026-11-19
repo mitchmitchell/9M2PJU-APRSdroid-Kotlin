@@ -69,12 +69,12 @@ fun LinkStatusBar(linkError: Int) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFB71C1C))
+            .background(org.aprsdroid.app.ui.theme.AprsTheme.colors.error)
             .padding(horizontal = 16.dp, vertical = 6.dp),
     ) {
         Text(
-            text = "Connection error (code $linkError)",
-            color = Color.White,
+            text = "Link down. APRSdroid keeps trying to reconnect.",
+            color = MaterialTheme.colorScheme.onError,
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Medium,
         )

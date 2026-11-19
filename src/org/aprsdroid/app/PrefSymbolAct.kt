@@ -61,7 +61,7 @@ class PrefSymbolAct : ComponentActivity() {
             initialSym[0].toString()
         } else ""
 
-        setContent {
+        setContent { org.aprsdroid.app.ui.theme.AprsTheme {
             SymbolPickerScreen(
                 initialSymbol = initialSym,
                 initialOverlay = initialOverlay,
@@ -71,7 +71,7 @@ class PrefSymbolAct : ComponentActivity() {
                 },
                 onCancel = { finish() },
             )
-        }
+        } }
     }
 
     @OptIn(ExperimentalMaterial3Api::class)

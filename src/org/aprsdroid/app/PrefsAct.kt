@@ -169,6 +169,22 @@ class PrefsAct : ComponentActivity() {
             },
         ))
 
+        // ---- Appearance ----
+        items.add(PrefItem.Category(title = getString(R.string.p__appearance)))
+        items.add(PrefItem.List(
+            key = "theme",
+            title = getString(R.string.p_theme),
+            summary = getString(R.string.p_theme_summary),
+            entries = arrayOf(
+                getString(R.string.p_theme_system),
+                getString(R.string.p_theme_dark),
+                getString(R.string.p_theme_light),
+            ),
+            entryValues = arrayOf("system", "dark", "light"),
+            default = "system",
+            onChanged = { recreate() },
+        ))
+
         // ---- ATAK / TAK export ----
         items.add(PrefItem.Clickable(
             title = getString(R.string.p__atak),

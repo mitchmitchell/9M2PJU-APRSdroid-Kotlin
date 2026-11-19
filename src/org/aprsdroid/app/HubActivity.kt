@@ -21,6 +21,7 @@ class HubActivity : ComponentActivity() {
         StationListViewModel.Factory(application, PrefsWrapper(this).getCallSsid())
     }
     private val prefs by lazy { PrefsWrapper(this) }
+    private val service = org.aprsdroid.app.ui.ServiceController(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -31,6 +32,7 @@ class HubActivity : ComponentActivity() {
                     viewModel = viewModel,
                     onNavigate = { target -> AprsNavigation.navigateTo(this, target, prefs) },
                     onPreferences = { AprsNavigation.openPreferences(this) },
+                    service = service,
                 )
             }
         }

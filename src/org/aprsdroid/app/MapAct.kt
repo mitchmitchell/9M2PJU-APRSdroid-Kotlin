@@ -107,7 +107,10 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     private val prefs by lazy { PrefsWrapper(this) }
     private val db by lazy { AprsDatabase.get(this) }
 
-    private var targetcall = ""
+    private var trackedCall by mutableStateOf("")
+    private var targetcall: String
+        get() = trackedCall
+        set(v) { trackedCall = v }
     private var showObjects = false
     private val isCoordinateChooser: Boolean by lazy { callingActivity != null }
 
@@ -185,7 +188,7 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         }
         val composeView = ComposeView(this)
         composeView.setContent {
-            MapScreen()
+            org.aprsdroid.app.ui.theme.AprsTheme { MapScreen() }
         }
         setContentView(composeView)
 
@@ -248,49 +251,10 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     private fun MapScreen() {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(if (isCoordinateChooser) getString(R.string.p_source_from_map)
-                             else if (targetcall == "") getString(R.string.app_map)
-                             else "${getString(R.string.app_map)}: $targetcall")
-                    },
-                    actions = {
-                        if (!isCoordinateChooser) {
-                            // Show objects toggle
-                            IconButton(onClick = {
-                                val newState = prefs.toggleBoolean("show_objects", true)
-                                showObjectsChecked = newState
-                                showObjects = newState
-                                reloadMap()
-                            }) {
-                                Icon(
-                                    if (showObjects) Icons.Filled.Visibility
-                                    else Icons.Filled.VisibilityOff,
-                                    contentDescription = "Toggle objects",
-                                )
-                            }
-                            // Map type picker (OSM / Google tiles / Google Maps SDK)
-                            MapTypeMenu(currentTag = currentModeTag) { mode ->
-                                if (!MapModes.switchTo(this@MapAct, prefs, mode, targetcall)) {
-                                    currentModeTag = mode.tag
-                                    reloadMapAndTheme()
-                                }
-                            }
-                            // Shared overflow menu
-                            AprsOverflowMenu(
-                                showAgeFilter = true,
-                                onPreferences = { AprsNavigation.openPreferences(this@MapAct) },
-                                onAgeChanged = { reloadMap() },
-                            )
-                        }
-                    },
-                )
-            },
-            floatingActionButton = {
-                if (!isCoordinateChooser) {
-                    FloatingActionButton(onClick = { centerOnMyLocation() }) {
-                        Icon(Icons.Filled.MyLocation, contentDescription = "My Location")
-                    }
+                // Only the position picker has a title bar; the normal map is
+                // map-first and its controls float on the map.
+                if (isCoordinateChooser) {
+                    TopAppBar(title = { Text(getString(R.string.p_source_from_map)) })
                 }
             },
             bottomBar = {
@@ -326,6 +290,45 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                     modifier = Modifier.fillMaxSize(),
                 )
 
+                if (!isCoordinateChooser) {
+                    if (targetcall.isNotEmpty()) {
+                        org.aprsdroid.app.ui.TrackingChip(
+                            call = targetcall,
+                            onStop = { targetcall = "" ; trackedCall = "" ; reloadMap() },
+                            modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                        )
+                    }
+                    org.aprsdroid.app.ui.MapControlStack(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+                    ) {
+                        MapTypeMenu(currentTag = currentModeTag) { mode ->
+                            if (!MapModes.switchTo(this@MapAct, prefs, mode, targetcall)) {
+                                currentModeTag = mode.tag
+                                reloadMapAndTheme()
+                            }
+                        }
+                        IconButton(onClick = {
+                            val newState = prefs.toggleBoolean("show_objects", true)
+                            showObjectsChecked = newState
+                            showObjects = newState
+                            reloadMap()
+                        }) {
+                            Icon(
+                                if (showObjectsChecked) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = if (showObjectsChecked) "Hide objects" else "Show objects",
+                            )
+                        }
+                        IconButton(onClick = { centerOnMyLocation() }) {
+                            Icon(Icons.Filled.MyLocation, contentDescription = "Go to my location")
+                        }
+                        AprsOverflowMenu(
+                            showAgeFilter = true,
+                            onPreferences = { AprsNavigation.openPreferences(this@MapAct) },
+                            onAgeChanged = { reloadMap() },
+                        )
+                    }
+                }
+
                 // Loading indicator
                 if (isLoading) {
                     Box(
@@ -352,12 +355,7 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                 // Coordinate chooser overlay
                 if (isCoordinateChooser) {
                     // Crosshair
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .background(Color.Transparent)
-                            .align(Alignment.Center),
-                    )
+                    org.aprsdroid.app.ui.MapCrosshair(Modifier.align(Alignment.Center))
                     // Info text
                     Column(
                         modifier = Modifier
@@ -366,11 +364,20 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                             .align(Alignment.TopCenter),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text(
-                            text = coordInfo,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
+                        if (coordInfo.isNotEmpty()) {
+                            androidx.compose.material3.Surface(
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                shadowElevation = 6.dp,
+                            ) {
+                                Text(
+                                    text = coordInfo,
+                                    style = org.aprsdroid.app.ui.theme.PacketStyle,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                )
+                            }
+                        }
                     }
                     // Accept button
                     AcceptButton(

@@ -32,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -63,7 +64,10 @@ class GoogleMapAct : ComponentActivity() {
     private lateinit var mapView: MapView
     private var map: GoogleMap? = null
 
-    private var targetcall = ""
+    private var trackedCall by mutableStateOf("")
+    private var targetcall: String
+        get() = trackedCall
+        set(v) { trackedCall = v }
     private var showObjects by mutableStateOf(true)
     private var isLoading by mutableStateOf(true)
     private var currentModeTag by mutableStateOf("google")
@@ -116,43 +120,6 @@ class GoogleMapAct : ComponentActivity() {
     @androidx.compose.runtime.Composable
     private fun Screen() {
         Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            if (targetcall.isEmpty()) getString(R.string.app_map)
-                            else "${getString(R.string.app_map)}: $targetcall",
-                        )
-                    },
-                    actions = {
-                        IconButton(onClick = {
-                            showObjects = prefs.toggleBoolean("show_objects", true)
-                            reload()
-                        }) {
-                            Icon(
-                                if (showObjects) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                                contentDescription = getString(R.string.map_objects),
-                            )
-                        }
-                        MapTypeMenu(currentTag = currentModeTag) { mode ->
-                            if (!MapModes.switchTo(this@GoogleMapAct, prefs, mode, targetcall)) {
-                                currentModeTag = mode.tag
-                                (mode as? GoogleMapMode)?.let { map?.mapType = it.mapType }
-                            }
-                        }
-                        AprsOverflowMenu(
-                            showAgeFilter = true,
-                            onPreferences = { AprsNavigation.openPreferences(this@GoogleMapAct) },
-                            onAgeChanged = { reload() },
-                        )
-                    },
-                )
-            },
-            floatingActionButton = {
-                FloatingActionButton(onClick = { centerOnMyLocation() }) {
-                    Icon(Icons.Filled.MyLocation, contentDescription = "My Location")
-                }
-            },
             bottomBar = {
                 AprsBottomBar(
                     current = NavTarget.MAP,
@@ -163,6 +130,40 @@ class GoogleMapAct : ComponentActivity() {
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+                if (trackedCall.isNotEmpty()) {
+                    org.aprsdroid.app.ui.TrackingChip(
+                        call = trackedCall,
+                        onStop = { targetcall = ""; reload() },
+                        modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                    )
+                }
+                org.aprsdroid.app.ui.MapControlStack(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+                ) {
+                    MapTypeMenu(currentTag = currentModeTag) { mode ->
+                        if (!MapModes.switchTo(this@GoogleMapAct, prefs, mode, targetcall)) {
+                            currentModeTag = mode.tag
+                            (mode as? GoogleMapMode)?.let { map?.mapType = it.mapType }
+                        }
+                    }
+                    IconButton(onClick = {
+                        showObjects = prefs.toggleBoolean("show_objects", true)
+                        reload()
+                    }) {
+                        Icon(
+                            if (showObjects) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                            contentDescription = if (showObjects) "Hide objects" else "Show objects",
+                        )
+                    }
+                    IconButton(onClick = { centerOnMyLocation() }) {
+                        Icon(Icons.Filled.MyLocation, contentDescription = "Go to my location")
+                    }
+                    AprsOverflowMenu(
+                        showAgeFilter = true,
+                        onPreferences = { AprsNavigation.openPreferences(this@GoogleMapAct) },
+                        onAgeChanged = { reload() },
+                    )
+                }
                 if (isLoading) {
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
                 }

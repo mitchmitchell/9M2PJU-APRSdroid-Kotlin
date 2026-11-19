@@ -53,12 +53,12 @@ class KeyfileImportActivity : ComponentActivity() {
         UIHelper.applySystemBarInsets(this)
         Log.d(tag, "created: $intent")
 
-        setContent {
+        setContent { org.aprsdroid.app.ui.theme.AprsTheme {
             PasswordDialog(
                 onConfirm = { pwd -> importKey(pwd) },
                 onCancel = { finish() },
             )
-        }
+        } }
     }
 
     @OptIn(ExperimentalMaterial3Api::class)

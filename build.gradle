@@ -213,6 +213,7 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.6'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6'
     implementation 'androidx.lifecycle:lifecycle-service:2.8.6'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.8.6'
 
     // Jetpack Compose
     def composeBom = platform('androidx.compose:compose-bom:2025.02.00')

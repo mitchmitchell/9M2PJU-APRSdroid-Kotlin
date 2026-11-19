@@ -1,24 +1,36 @@
 package org.aprsdroid.app.ui
 
+import android.content.Intent
 import android.location.Location
+import android.net.Uri
+import android.text.format.DateUtils
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -26,58 +38,130 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import org.aprsdroid.app.AprsSymbols
+import org.aprsdroid.app.MapData
 import org.aprsdroid.app.NavTarget
 import org.aprsdroid.app.PrefsWrapper
+import org.aprsdroid.app.StationActivity
 import org.aprsdroid.app.data.StationEntity
+import org.aprsdroid.app.ui.theme.AprsTheme
+import org.aprsdroid.app.ui.theme.CallsignStyle
+
+/** One row of the station list, with everything computed for display. */
+private data class StationRow(
+    val station: StationEntity,
+    val isOwn: Boolean,
+    /** Metres from us, or null if our position is unknown. */
+    val distanceM: Float?,
+    val bearingDeg: Float?,
+)
 
 /**
- * Compose screen for the station list (HubActivity).
+ * The station list ("Stations" tab): who is around, nearest first.
  *
- * Shows nearby stations sorted by distance, with search/filter,
- * distance/bearing display, and long-press context menu.
+ * Your own station is pinned to the top. Tap a station for its details,
+ * long-press for the action menu (message, track on map, ...).
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StationListScreen(
     viewModel: StationListViewModel,
     onNavigate: (NavTarget) -> Unit = {},
     onPreferences: () -> Unit = {},
+    service: ServiceController? = null,
 ) {
     val stations by viewModel.stations.collectAsState()
+    var searching by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var contextMenuCall by remember { mutableStateOf<String?>(null) }
+    var ageTick by remember { mutableStateOf(0) }
     val context = LocalContext.current
-    val myLat = remember { PrefsWrapper(context).prefs.getInt("last_lat", 0) }
-    val myLon = remember { PrefsWrapper(context).prefs.getInt("last_lon", 0) }
-    val hasMyPos = myLat != 0 || myLon != 0
+    val myCall = remember { PrefsWrapper(context).getCallSsid() }
 
-    val filteredStations by remember(stations, searchQuery) {
-        derivedStateOf {
-            if (searchQuery.isBlank()) stations
-            else stations.filter { it.call.contains(searchQuery, ignoreCase = true) }
-        }
+    // Our position: our own latest beacon if we have one, else the phone's last fix.
+    val fallbackPos = remember { MapData.lastKnownLocation(context) }
+    val rows = remember(stations, searchQuery, ageTick) {
+        val own = stations.firstOrNull { it.call.equals(myCall, ignoreCase = true) }
+        val myLat = own?.let { it.lat / 1e6 } ?: fallbackPos?.lat
+        val myLon = own?.let { it.lon / 1e6 } ?: fallbackPos?.lon
+        val showAfter = System.currentTimeMillis() - PrefsWrapper(context).getShowAge()
+        stations.asSequence()
+            .filter { it.ts > showAfter || it.call.equals(myCall, ignoreCase = true) }
+            .filter { searchQuery.isBlank() || it.call.contains(searchQuery, ignoreCase = true) }
+            .map { sta ->
+                val res = FloatArray(2)
+                val known = myLat != null && myLon != null
+                if (known) Location.distanceBetween(myLat!!, myLon!!, sta.lat / 1e6, sta.lon / 1e6, res)
+                StationRow(
+                    station = sta,
+                    isOwn = sta.call.equals(myCall, ignoreCase = true),
+                    distanceM = if (known) res[0] else null,
+                    bearingDeg = if (known) res[1] else null,
+                )
+            }
+            .sortedWith(
+                compareByDescending<StationRow> { it.isOwn }
+                    .thenBy { it.distanceM ?: Float.MAX_VALUE }
+                    .thenByDescending { it.station.ts },
+            )
+            .toList()
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Stations") },
+                title = {
+                    if (searching) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it.uppercase() },
+                            modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                            placeholder = { Text("Callsign") },
+                            singleLine = true,
+                            textStyle = CallsignStyle,
+                        )
+                    } else {
+                        Column {
+                            Text("Stations")
+                            Text(
+                                text = when {
+                                    stations.isEmpty() -> "None heard yet"
+                                    else -> "${rows.count { !it.isOwn }} heard nearby"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                },
                 actions = {
+                    IconButton(onClick = {
+                        searching = !searching
+                        if (!searching) searchQuery = ""
+                    }) {
+                        Icon(
+                            if (searching) Icons.Filled.Close else Icons.Filled.Search,
+                            contentDescription = if (searching) "Close search" else "Search callsigns",
+                        )
+                    }
                     AprsOverflowMenu(
                         showAgeFilter = true,
                         onPreferences = onPreferences,
-                        onAgeChanged = { /* trigger refresh */ },
+                        onAgeChanged = { ageTick++ },
                     )
                 },
             )
@@ -87,158 +171,160 @@ fun StationListScreen(
                 current = NavTarget.HUB,
                 onNavigate = onNavigate,
                 onPreferences = onPreferences,
+                service = service,
             )
         },
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-        ) {
-            // Search bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it.uppercase() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                placeholder = { Text("Search callsign...") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                singleLine = true,
-            )
-
-            if (stations.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Icon(
-                            Icons.Filled.LocationOn,
-                            contentDescription = null,
-                            modifier = Modifier.padding(8.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                        )
-                        Text(
-                            "No stations yet",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            "Start tracking to see nearby stations.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            } else if (filteredStations.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "No stations match \"$searchQuery\"",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    items(filteredStations) { station ->
+        Box(Modifier.fillMaxSize().padding(padding)) {
+            when {
+                stations.isEmpty() -> EmptyState(
+                    title = "No stations heard yet",
+                    body = "Start tracking, and stations will appear here as their packets arrive.",
+                )
+                rows.isEmpty() -> EmptyState(
+                    title = if (searchQuery.isBlank()) "No recent stations" else "No callsign contains \"$searchQuery\"",
+                    body = if (searchQuery.isBlank()) "Everything heard is older than the \"Show last\" filter in the menu."
+                    else "Check the spelling, or close search to see everyone.",
+                )
+                else -> LazyColumn(Modifier.fillMaxSize()) {
+                    items(rows, key = { it.station.call }) { row ->
                         StationItem(
-                            station = station,
-                            viewModel = viewModel,
-                            hasMyPos = hasMyPos,
-                            myLat = myLat,
-                            myLon = myLon,
-                            onClick = { /* could open details */ },
-                            onLongClick = { contextMenuCall = station.call },
+                            row = row,
+                            metric = viewModel.isMetric,
+                            onClick = {
+                                context.startActivity(
+                                    Intent(context, StationActivity::class.java)
+                                        .setData(Uri.parse(row.station.call)),
+                                )
+                            },
+                            onLongClick = { contextMenuCall = row.station.call },
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        HorizontalDivider(color = AprsTheme.colors.line.copy(alpha = 0.6f))
                     }
                 }
             }
         }
     }
 
-    // Context menu
     contextMenuCall?.let { call ->
-        CallsignContextMenu(
-            call = call,
-            expanded = true,
-            onDismiss = { contextMenuCall = null },
+        CallsignContextMenu(call = call, expanded = true, onDismiss = { contextMenuCall = null })
+    }
+}
+
+@Composable
+fun EmptyState(title: String, body: String) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            body,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
     }
+}
+
+/** An APRS symbol from the sprite sheet (with its overlay character, if any). */
+@Composable
+fun SymbolIcon(symbol: String?, size: Dp, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val px = with(LocalDensity.current) { size.roundToPx() }
+    val sym = AprsSymbols.validate(symbol)
+    val bitmap = remember(sym, px) { AprsSymbols.bitmap(context, sym, px).asImageBitmap() }
+    Image(bitmap = bitmap, contentDescription = null, modifier = modifier.size(size))
+}
+
+private val COMPASS = arrayOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+
+private fun formatDistance(metres: Float, bearing: Float, metric: Boolean): String {
+    val dir = COMPASS[((bearing.toInt() + 22 + 720) % 360) / 45]
+    val d = if (metric) metres / 1000.0 else metres / 1609.344
+    val unit = if (metric) "km" else "mi"
+    return if (d < 100) "%.1f %s %s".format(d, unit, dir) else "%.0f %s %s".format(d, unit, dir)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun StationItem(
-    station: StationEntity,
-    viewModel: StationListViewModel,
-    hasMyPos: Boolean,
-    myLat: Int,
-    myLon: Int,
+    row: StationRow,
+    metric: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
-    val ageColor = viewModel.getAgeColor(station.ts)
+    val sta = row.station
+    val colors = AprsTheme.colors
+    val context = LocalContext.current
+    // Stations fade as they go quiet: full strength when fresh, dimmer after half an hour.
+    val ageMin = (System.currentTimeMillis() - sta.ts) / 60000f
+    val freshness = if (row.isOwn) 1f else (1f - (ageMin / 30f).coerceIn(0f, 1f) * 0.45f)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .height(IntrinsicSize.Min)
+            .background(if (row.isOwn) colors.ownRow else MaterialTheme.colorScheme.background)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(
-            modifier = Modifier.weight(1f),
+        // Own station: a green edge, like a marker on a chart.
+        Box(
+            Modifier.width(4.dp).fillMaxHeight()
+                .background(if (row.isOwn) colors.tx else androidx.compose.ui.graphics.Color.Transparent),
+        )
+        Row(
+            modifier = Modifier.weight(1f).padding(start = 10.dp, end = 14.dp, top = 9.dp, bottom = 9.dp).alpha(freshness),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = station.call,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = FontWeight.Medium,
-                ),
-                color = Color(ageColor),
-            )
-            if (!station.comment.isNullOrEmpty()) {
+            SymbolIcon(sta.symbol, 34.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = station.comment,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(ageColor),
+                    text = sta.call,
+                    style = CallsignStyle,
+                    color = if (row.isOwn) colors.tx else colors.callsign,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
+                val detail = listOfNotNull(
+                    sta.qrg?.takeIf { it.isNotBlank() },
+                    sta.comment?.trim()?.takeIf { it.isNotEmpty() },
+                ).joinToString("  ")
+                if (detail.isNotEmpty()) {
+                    Text(
+                        text = detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-            if (!station.qrg.isNullOrEmpty()) {
+            Spacer(Modifier.width(10.dp))
+            Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    text = station.qrg,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(ageColor),
+                    text = when {
+                        row.isOwn -> "You"
+                        row.distanceM != null && row.bearingDeg != null ->
+                            formatDistance(row.distanceM, row.bearingDeg, metric)
+                        else -> ""
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
                 )
-            }
-        }
-        // Distance/bearing or relative time
-        Column(
-            horizontalAlignment = Alignment.End,
-        ) {
-            if (hasMyPos) {
                 Text(
-                    text = viewModel.getDistanceText(myLat, myLon, station),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(ageColor),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
-                )
-            } else {
-                Text(
-                    text = android.text.format.DateUtils.getRelativeTimeSpanString(
-                        viewModel.app, station.ts,
+                    text = DateUtils.getRelativeTimeSpanString(
+                        sta.ts, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
+                        DateUtils.FORMAT_ABBREV_RELATIVE,
                     ).toString(),
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color(ageColor),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
                 )
             }
         }

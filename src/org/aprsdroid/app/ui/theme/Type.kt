@@ -50,3 +50,19 @@ val AprsTypography = Typography(
         lineHeight = 16.sp,
     ),
 )
+
+/** "Radio display" text: callsigns and raw packets, where characters must line up. */
+val CallsignStyle = TextStyle(
+    fontFamily = FontFamily.Monospace,
+    fontWeight = FontWeight.Bold,
+    fontSize = 19.sp,
+    lineHeight = 24.sp,
+    letterSpacing = 0.5.sp,
+)
+
+val PacketStyle = TextStyle(
+    fontFamily = FontFamily.Monospace,
+    fontWeight = FontWeight.Normal,
+    fontSize = 13.sp,
+    lineHeight = 18.sp,
+)
