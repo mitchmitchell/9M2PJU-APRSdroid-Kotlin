@@ -253,7 +253,8 @@ private fun exportLog(activity: Activity) {
                     }
                     val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date(post.ts))
                     val status = if (post.type == 1 || post.type == 2) "${post.status ?: ""}\t" else ""
-                    writer.println("$ts\t$typeStr\t$status${post.message ?: ""}")
+                    val msg = org.aprsdroid.app.AprsPacket.maskPasscode(post.message ?: "")
+                    writer.println("$ts\t$typeStr\t$status$msg")
                 }
             }
             withContext(Dispatchers.Main) {

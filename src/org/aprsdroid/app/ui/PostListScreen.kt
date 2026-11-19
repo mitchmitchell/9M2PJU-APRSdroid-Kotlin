@@ -180,7 +180,8 @@ private fun PostItem(
             color = Color(color),
         )
         Text(
-            text = post.message ?: "",
+            // Entries logged by older builds may still contain the passcode.
+            text = org.aprsdroid.app.AprsPacket.maskPasscode(post.message ?: ""),
             modifier = Modifier.weight(0.7f),
             style = MaterialTheme.typography.bodySmall.copy(
                 fontFamily = if (isMonospace) FontFamily.Monospace else FontFamily.Default,

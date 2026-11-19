@@ -15,7 +15,8 @@ class AprsIsProto(service: AprsService, input: InputStream, output: OutputStream
 
     init {
         val loginfilter = service.prefs.getLoginString() + service.prefs.getFilterString(service)
-        service.postAddPost(PostEntity.TYPE_TX, R.string.p_conn_aprsis, loginfilter)
+        // The log is visible on screen and in exports: never store the passcode.
+        service.postAddPost(PostEntity.TYPE_TX, R.string.p_conn_aprsis, AprsPacket.maskPasscode(loginfilter))
         writer.println(loginfilter)
     }
 }

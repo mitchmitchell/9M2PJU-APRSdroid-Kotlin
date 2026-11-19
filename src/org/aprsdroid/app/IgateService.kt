@@ -219,7 +219,7 @@ class TcpSocketThread(
         val loginMessage = "user $callsign pass $passcode vers $version\r\n"
         val filterMessage = "#filter $filter\r\n"
 
-        Log.d(TAG, "sendLogin() - Sending login: $loginMessage")
+        Log.d(TAG, "sendLogin() - Sending login: ${AprsPacket.maskPasscode(loginMessage)}")
         Log.d(TAG, "sendLogin() - Sending filter: $filterMessage")
 
         writer!!.println(loginMessage)
