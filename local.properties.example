@@ -1,0 +1,22 @@
+# Copy to local.properties (git-ignored) and fill in. Never commit the real file.
+# See doc/MAPS-AND-ATAK.md.
+
+# Android SDK location (Android Studio usually writes this line itself)
+sdk.dir=C:/Users/YOU/AppData/Local/Android/Sdk
+
+# APK signing: password-protected PKCS#12 from the Magnolia OpenXPKI
+# (signing cert SHA-1 4B:AA:29:08:E7:58:3F:65:B6:D0:6E:8A:9E:E9:69:5E:56:C9:34:50).
+# Point at the file where it lives (e.g. your Proton Drive sync folder).
+# Both debug and release builds use it. Check with: gradlew signingReport
+signing.storeFile=C:/path/to/aprsdroid.p12
+signing.storePassword=CHANGE_ME
+signing.keyAlias=aprsdroid
+# signing.keyPassword=   (defaults to storePassword)
+
+# Google Maps SDK key, restricted in Google Cloud to
+#   Android apps: org.aprsdroid.app + SHA-1 above;  API: Maps SDK for Android
+mapsApiKey=
+
+# Optional default key for the "Google tiles" map types, restricted to the
+# Map Tiles API only (with a quota). Can also be entered in Settings -> Map.
+mapsTilesApiKey=
