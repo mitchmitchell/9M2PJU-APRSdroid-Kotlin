@@ -484,8 +484,10 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         if (themefile.exists()) {
             try {
                 mv.setRenderTheme(themefile)
-            } catch (_: java.io.FileNotFoundException) {
-                // ignore
+            } catch (e: Exception) {
+                // FileNotFoundException, or UnsupportedOperationException when an
+                // online tile source is active (render themes only apply to .map files).
+                Log.d(tag, "render theme not applied: $e")
             }
         }
         loadMapViewPosition()
@@ -503,12 +505,12 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         try {
             val mapGen = OsmTileDownloader.create(this)
             mapGen.setUserAgent(getString(R.string.build_version))
-            flushTileCaches(mv)
-            defaultCachePersistent?.let { mv.fileSystemTileCache.setPersistent(it) }
             mv.setMapGenerator(mapGen)
-        } catch (_: UnsupportedOperationException) {
-            // ignore
+        } catch (e: Exception) {
+            Log.e(tag, "could not set the OSM tile source", e)
+            return
         }
+        applyCacheSettings(mv, mode, persistent = null)
     }
 
     /** Create/refresh the Google session off the main thread, then switch the tile source. */
@@ -525,11 +527,14 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
             result.onSuccess { session ->
                 val gen = GoogleTileDownloader(session.token, GoogleTiles.apiKey(this@MapAct))
                 gen.setUserAgent(getString(R.string.build_version))
-                flushTileCaches(mv)
+                try {
+                    mv.setMapGenerator(gen)
+                } catch (e: Exception) {
+                    Log.e(tag, "could not set the Google tile source", e)
+                    return@onSuccess
+                }
                 // Google's terms limit storing tiles: keep them out of the persistent cache.
-                if (defaultCachePersistent == null) defaultCachePersistent = mv.fileSystemTileCache.isPersistent
-                mv.fileSystemTileCache.setPersistent(false)
-                mv.setMapGenerator(gen)
+                applyCacheSettings(mv, mode, persistent = false)
                 lastAttributionKey = ""
                 scheduleAttribution()
             }.onFailure { e ->
@@ -546,14 +551,40 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     }
 
     /**
-     * Mapsforge keys cached tiles by host name only, and all Google map
-     * types share one host — drop cached tiles whenever the source changes.
+     * Keep each tile source's cached tiles apart.
+     *
+     * Mapsforge 0.3 keys cached tiles by host name plus the "job
+     * parameters" (render theme + text scale), every Google map type shares
+     * one host, and its caches cannot be flushed (setCapacity throws
+     * UnsupportedOperationException on the in-memory cache). Downloaded
+     * tiles ignore the text scale, so give each source its own slightly
+     * different value: that changes the cache key without changing how
+     * anything is drawn. OSM keeps the plain density so its existing cache
+     * stays valid.
      */
-    private fun flushTileCaches(mv: MapView) {
-        for (cache in listOf(mv.inMemoryTileCache, mv.fileSystemTileCache)) {
-            val cap = cache.capacity
-            cache.setCapacity(0)
-            cache.setCapacity(cap)
+    private fun separateTileCache(mv: MapView, mode: MapMode) {
+        val slot = if (mode is GoogleTilesMode) mode.tileType.ordinal + 1 else 0
+        mv.setTextScale(resources.displayMetrics.density + slot * 0.001f)
+    }
+
+    /**
+     * Cache housekeeping after the tile source is set. Best effort: a
+     * failure here must never stop the map from showing.
+     * @param persistent null restores Mapsforge's own setting.
+     */
+    private fun applyCacheSettings(mv: MapView, mode: MapMode, persistent: Boolean?) {
+        try {
+            separateTileCache(mv, mode)
+        } catch (e: Exception) {
+            Log.w(tag, "could not separate tile cache", e)
+        }
+        try {
+            val cache = mv.fileSystemTileCache
+            if (defaultCachePersistent == null) defaultCachePersistent = cache.isPersistent
+            val want = persistent ?: defaultCachePersistent ?: return
+            if (cache.isPersistent != want) cache.setPersistent(want)
+        } catch (e: Exception) {
+            Log.w(tag, "could not change tile cache persistence", e)
         }
     }
 
