@@ -1,4 +1,6 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
    <external-path name="APRSdroid" path="Documents/APRSdroid" />
+   <external-files-path name="exports" path="exports" />
+   <files-path name="exports_internal" path="exports" />
    <cache-path name="apk_updates" path="updates" />
 </paths>

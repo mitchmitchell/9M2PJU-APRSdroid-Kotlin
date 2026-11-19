@@ -93,6 +93,10 @@ interface PostDao {
     @Query("SELECT * FROM posts WHERE type IN (0, 3, 5, 6) ORDER BY _id")
     suspend fun getExportPostsList(): List<PostEntity>
 
+    /** Everything in the log, including info, error and crash entries. */
+    @Query("SELECT * FROM posts ORDER BY _id")
+    suspend fun getFullLogList(): List<PostEntity>
+
     // ---- maintenance ----
 
     /** Delete posts older than [ts] (matches Scala `trimPosts(ts)`). */

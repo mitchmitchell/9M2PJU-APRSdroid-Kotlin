@@ -223,7 +223,8 @@ private fun exportLog(activity: Activity) {
     GlobalScope.launch(Dispatchers.IO) {
         try {
             val db = AprsDatabase.get(activity)
-            val posts = db.postDao().getExportPostsList()
+            // Full log: packets plus info, error and crash entries.
+            val posts = db.postDao().getFullLogList()
             if (posts.isEmpty()) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(activity, "Nothing to export", Toast.LENGTH_SHORT).show()
@@ -236,21 +237,28 @@ private fun exportLog(activity: Activity) {
             val file = File(dir, "aprsdroid-${sdf.format(Date())}.log")
             PrintWriter(file).use { writer ->
                 writer.println("# APRSdroid log export")
+                writer.println("# ${activity.getString(org.aprsdroid.app.R.string.build_version)}" +
+                    " / Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})" +
+                    " / ${Build.MANUFACTURER} ${Build.MODEL}")
                 for (post in posts) {
                     val typeStr = when (post.type) {
-                        0, 3 -> "RX"
+                        0 -> "TX"
+                        1 -> "INFO"
+                        2 -> "ERR"
+                        3 -> "RX"
                         4 -> "TX"
                         5 -> "DP"
                         6 -> "IG"
                         else -> "??"
                     }
                     val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date(post.ts))
-                    writer.println("$ts\t$typeStr\t${post.message ?: ""}")
+                    val status = if (post.type == 1 || post.type == 2) "${post.status ?: ""}\t" else ""
+                    writer.println("$ts\t$typeStr\t$status${post.message ?: ""}")
                 }
             }
             withContext(Dispatchers.Main) {
                 UIHelper.shareFile(activity, file, file.name)
-                Toast.makeText(activity, "Exported ${posts.size} packets", Toast.LENGTH_SHORT).show()
+                Toast.makeText(activity, "Exported ${posts.size} log entries", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             withContext(Dispatchers.Main) {
