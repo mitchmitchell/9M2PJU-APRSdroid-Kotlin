@@ -145,6 +145,8 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     private val handler = Handler(Looper.getMainLooper())
     private val attributionRunnable = Runnable { refreshAttribution() }
     private var lastAttributionKey = ""
+    /** Mapsforge's own persistence setting, restored when leaving Google tiles. */
+    private var defaultCachePersistent: Boolean? = null
 
     /** The map type this activity is showing (OSM or a Google tiles type). */
     private fun currentMode(): MapMode {
@@ -484,6 +486,7 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
             val mapGen = OsmTileDownloader.create(this)
             mapGen.setUserAgent(getString(R.string.build_version))
             flushTileCaches(mv)
+            defaultCachePersistent?.let { mv.fileSystemTileCache.setPersistent(it) }
             mv.setMapGenerator(mapGen)
         } catch (_: UnsupportedOperationException) {
             // ignore
@@ -506,6 +509,7 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                 gen.setUserAgent(getString(R.string.build_version))
                 flushTileCaches(mv)
                 // Google's terms limit storing tiles: keep them out of the persistent cache.
+                if (defaultCachePersistent == null) defaultCachePersistent = mv.fileSystemTileCache.isPersistent
                 mv.fileSystemTileCache.setPersistent(false)
                 mv.setMapGenerator(gen)
                 lastAttributionKey = ""

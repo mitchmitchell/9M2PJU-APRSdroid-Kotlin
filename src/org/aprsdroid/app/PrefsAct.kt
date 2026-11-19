@@ -169,6 +169,13 @@ class PrefsAct : ComponentActivity() {
             },
         ))
 
+        // ---- ATAK / TAK export ----
+        items.add(PrefItem.Clickable(
+            title = getString(R.string.p__atak),
+            summary = getString(R.string.p_atak_link_summary),
+            onClick = { startActivity(Intent(this, AtakPrefs::class.java)) },
+        ))
+
         // ---- Map category ----
         items.add(PrefItem.Category(title = getString(R.string.p__map)))
         MapModes.initialize(this)

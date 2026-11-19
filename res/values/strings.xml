@@ -238,6 +238,47 @@
 <string name="p_gtiles_test_fail">Key test failed: %s</string>
 <string name="p_gmaps_sdk_status">Google Maps SDK</string>
 <string name="p_gmaps_sdk_on">Built with a Maps SDK key: \"Google:\" map types available.</string>
+<string name="p__atak">ATAK / TAK export</string>
+<string name="p_atak_link_summary">Send APRS stations to ATAK on this phone or to a TAK Server</string>
+<string name="p_atak_enabled">Send stations to ATAK / TAK</string>
+<string name="p_atak_enabled_summary">Every received APRS position is sent as Cursor-on-Target (CoT)</string>
+<string name="p_atak_local">ATAK on this phone (UDP)</string>
+<string name="p_atak_udp">Send to ATAK via UDP</string>
+<string name="p_atak_udp_summary">ATAK listens on UDP 4242 by default (Settings → Network → Manage Inputs)</string>
+<string name="p_atak_host">Host</string>
+<string name="p_atak_port">Port</string>
+<string name="p_atak_udp_host_summary">127.0.0.1 = this phone. 239.2.3.1 (port 6969) = Mesh SA multicast to the whole Wi-Fi network</string>
+<string name="p_atak_server">TAK Server</string>
+<string name="p_atak_tak">Send to a TAK Server</string>
+<string name="p_atak_tak_summary">Streams the stations your radio hears to the server, e.g. over Tailscale</string>
+<string name="p_atak_tak_host_summary">Server host name (must match its certificate when verifying)</string>
+<string name="p_atak_tls">Use TLS</string>
+<string name="p_atak_tls_on">TLS (normally port 8089), with the client certificate below</string>
+<string name="p_atak_tls_off">Plain TCP (normally port 8087) — testing only, not encrypted</string>
+<string name="p_atak_verify_host">Verify server host name</string>
+<string name="p_atak_verify_host_on">Server certificate must match the host name</string>
+<string name="p_atak_verify_host_off">Host name not checked (certificate chain still verified)</string>
+<string name="p_atak_cert">Client certificate (.p12)</string>
+<string name="p_atak_cert_none">None. Import a .p12 from your CA; its CA chain is also used to verify the server.</string>
+<string name="p_atak_cert_info">%1$s\n%2$d CA certificate(s) • valid until %3$s</string>
+<string name="p_atak_cert_remove">Remove client certificate</string>
+<string name="p_atak_cert_password">Password for the .p12 file</string>
+<string name="p_atak_cert_ok">Imported %s</string>
+<string name="p_atak_cert_fail">Could not import certificate: %s</string>
+<string name="p_atak_what">What to send</string>
+<string name="p_atak_own">Include my own position</string>
+<string name="p_atak_own_summary">Off: ATAK already shows you from the phone\'s GPS</string>
+<string name="p_atak_objects">Include objects and items</string>
+<string name="p_atak_internet">Include stations from APRS-IS</string>
+<string name="p_atak_internet_summary">Off: only stations heard over RF</string>
+<string name="p_atak_cot">CoT format</string>
+<string name="p_atak_stale">Stale time (minutes)</string>
+<string name="p_atak_stale_summary">How long ATAK shows a station after its last position</string>
+<string name="p_atak_uid_prefix">UID prefix</string>
+<string name="p_atak_uid_prefix_summary">\"APRS.\" matches aprscot, so both feeds update the same marker</string>
+<string name="p_atak_name_suffix">Callsign suffix</string>
+<string name="p_atak_cot_type">CoT type</string>
+<string name="p_atak_cot_type_summary">Marker type for all stations (aprscot default: a-f-G-I-U-T-r)</string>
 <string name="p_gmaps_sdk_off">Built without mapsApiKey: \"Google:\" SDK map types hidden.</string>
 
 <!-- map view -->

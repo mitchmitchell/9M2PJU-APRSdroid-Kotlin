@@ -187,6 +187,7 @@ android {
         }
         test {
             java.srcDirs = ['test/java']
+            resources.srcDirs = ['test/resources']
         }
     }
 

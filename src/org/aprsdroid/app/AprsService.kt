@@ -30,6 +30,8 @@ import net.ab0oo.aprs.parser.PositionPacket
 import org.aprsdroid.app.data.AprsDatabase
 import org.aprsdroid.app.data.PostEntity
 import org.aprsdroid.app.data.StationEntity
+import org.aprsdroid.app.export.StationExporter
+import org.aprsdroid.app.export.StationReport
 
 /**
  * Kotlin port of the Scala `AprsService`.
@@ -56,6 +58,8 @@ class AprsService : Service() {
     var msgService: MessageService? = null
     var igateService: IgateService? = null
     var digipeaterService: DigipeaterService? = null
+    /** ATAK / TAK Cursor-on-Target export of received stations. */
+    var exporter: StationExporter? = null
     var singleShot = false
 
     // ---- lifecycle ----
@@ -83,6 +87,8 @@ class AprsService : Service() {
         locSource?.stop()
         msgService?.stop()
         igateService?.stop()
+        exporter?.stop()
+        exporter = null
         serviceScope.cancel()
         ServiceNotifier.instance.stop(this)
         // Documented API event (doc/API.mdwn); was missing from the Kotlin port.
@@ -151,6 +157,12 @@ class AprsService : Service() {
             digipeaterService = DigipeaterService(prefs, TAG) { packet ->
                 sendDigipeatedPacket(packet)
             }
+            // ATAK / TAK export. Always created; it idles unless enabled in
+            // settings, and picks up setting changes while running.
+            exporter = StationExporter(this) { type, msg ->
+                // addPost (not postAddPost): an export error must not stop the service.
+                handler.post { addPost(type, "ATAK", msg) }
+            }.also { it.start() }
         } else {
             onPosterStarted()
         }
@@ -399,8 +411,10 @@ class AprsService : Service() {
         try {
             var fap = Parser.parse(message)
             val digiPathCheck = fap.digiString
+            var thirdParty = false
 
             if (fap.type == APRSTypes.T_THIRDPARTY) {
+                thirdParty = true
                 Log.d(TAG, "parsePacket: third-party packet from ${fap.sourceCall}")
                 val inner = fap.aprsInformation.toString()
                 fap = Parser.parse(inner.substring(1, inner.length))
@@ -429,8 +443,8 @@ class AprsService : Service() {
                 throw Exception("FAP fault")
             }
             when (val info = fap.aprsInformation) {
-                is PositionPacket -> addPosition(ts, fap, info, info.position, null)
-                is ObjectPacket -> addPosition(ts, fap, info, info.position, info.objectName)
+                is PositionPacket -> addPosition(ts, fap, info, info.position, null, viaInternet(thirdParty))
+                is ObjectPacket -> addPosition(ts, fap, info, info.position, info.objectName, viaInternet(thirdParty))
                 is MessagePacket -> {
                     msgService?.handleMessage(ts, fap, info, digiPathCheck)
                     Log.d(TAG, "received message from ${fap.sourceCall}: ${info.messageBody}")
@@ -443,6 +457,10 @@ class AprsService : Service() {
         }
     }
 
+    /** True when packets arrive from APRS-IS rather than over RF. */
+    private fun viaInternet(thirdParty: Boolean): Boolean =
+        thirdParty || prefs.getProto() == "aprsis"
+
     private fun getCSE(field: InformationField): CourseAndSpeedExtension? {
         return field.extension as? CourseAndSpeedExtension
     }
@@ -453,6 +471,7 @@ class AprsService : Service() {
         field: InformationField,
         pos: Position,
         objectname: String?,
+        viaInternet: Boolean = false,
     ) {
         val cse = getCSE(field)
         serviceScope.launch {
@@ -484,12 +503,33 @@ class AprsService : Service() {
                 )
             )
 
+            val location = AprsPacket.position2location(ts, pos, cse)
+            exporter?.offer(
+                StationReport(
+                    call = name,
+                    origin = if (objectname != null) call else null,
+                    symbol = sym,
+                    lat = pos.latitude,
+                    lon = pos.longitude,
+                    altM = StationReport.altitudeFromComment(comment),
+                    courseDeg = cse?.course,
+                    speedMps = cse?.let { it.speed / 1.94384449 },
+                    ceM = location.accuracy.toDouble(),
+                    comment = comment.ifBlank { null },
+                    qrg = qrg,
+                    ts = ts,
+                    isObject = objectname != null,
+                    isOwn = call.equals(prefs.getCallSsid(), ignoreCase = true),
+                    viaInternet = viaInternet && !call.equals(prefs.getCallSsid(), ignoreCase = true),
+                )
+            )
+
             // Broadcast only after the database write, so listeners (the map
             // views) that reload on POSITION always see this station.
             sendBroadcast(
                 Intent(POSITION)
                     .putExtra(SOURCE, ap.sourceCall)
-                    .putExtra(LOCATION, AprsPacket.position2location(ts, pos, cse))
+                    .putExtra(LOCATION, location)
                     .putExtra(CALLSIGN, name)
                     .putExtra(PACKET, ap.toString())
             )
