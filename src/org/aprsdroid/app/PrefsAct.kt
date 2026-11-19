@@ -45,6 +45,9 @@ class PrefsAct : ComponentActivity() {
 
     private val prefs by lazy { PrefsWrapper(this) }
 
+    /** Bumped to rebuild the item list after changes made outside a PrefItem (e.g. the tiles key dialog). */
+    private var refreshTick by mutableStateOf(0)
+
     private val tilepathPicker = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -94,7 +97,7 @@ class PrefsAct : ComponentActivity() {
             PreferenceScreen(
                 title = getString(R.string.app_prefs),
                 onBack = { finish() },
-                items = prefsItems(),
+                items = run { refreshTick; prefsItems() },
                 actions = {
                     IconButton(onClick = { showMenu = true }) {
                         Icon(Icons.Filled.MoreVert, contentDescription = "Menu")
@@ -164,6 +167,41 @@ class PrefsAct : ComponentActivity() {
             onClick = {
                 startActivity(Intent(this, BackendPrefs::class.java))
             },
+        ))
+
+        // ---- Map category ----
+        items.add(PrefItem.Category(title = getString(R.string.p__map)))
+        MapModes.initialize(this)
+        val availableModes = MapModes.all.filter { it.isAvailable(this) }
+        items.add(PrefItem.List(
+            key = "mapmode",
+            title = getString(R.string.map_type),
+            summary = getString(
+                R.string.p_map_type_summary,
+                getString(MapModes.defaultMapMode(this, prefs).titleRes),
+            ),
+            entries = availableModes.map { getString(it.titleRes) }.toTypedArray(),
+            entryValues = availableModes.map { it.tag }.toTypedArray(),
+            default = "osm",
+            onChanged = { refreshTick++ },
+        ))
+        val tilesKey = GoogleTiles.apiKey(this)
+        items.add(PrefItem.Clickable(
+            title = getString(R.string.p_gtiles_key),
+            summary = if (tilesKey.isEmpty()) getString(R.string.p_gtiles_key_summary_unset)
+                else getString(R.string.p_gtiles_key_summary_set, tilesKey.takeLast(4)),
+            onClick = { showTilesKeyDialog() },
+        ))
+        items.add(PrefItem.Clickable(
+            title = getString(R.string.p_gtiles_test),
+            enabled = tilesKey.isNotEmpty(),
+            onClick = { testTilesKey() },
+        ))
+        items.add(PrefItem.Clickable(
+            title = getString(R.string.p_gmaps_sdk_status),
+            summary = getString(if (BuildConfig.MAPS_SDK_KEY_SET) R.string.p_gmaps_sdk_on else R.string.p_gmaps_sdk_off),
+            enabled = false,
+            onClick = { },
         ))
 
         // ---- Offline map category ----
@@ -411,6 +449,43 @@ class PrefsAct : ComponentActivity() {
         } catch (e: Exception) {
             Toast.makeText(this, e.message ?: "", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun showTilesKeyDialog() {
+        val input = android.widget.EditText(this).apply {
+            hint = getString(R.string.p_gtiles_key_hint)
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+            setText(GoogleTiles.secrets(this@PrefsAct).getString(GoogleTiles.KEY_PREF, ""))
+        }
+        val pad = (resources.displayMetrics.density * 20).toInt()
+        val frame = android.widget.FrameLayout(this).apply {
+            setPadding(pad, pad / 2, pad, 0)
+            addView(input)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.p_gtiles_key)
+            .setMessage(R.string.p_gtiles_key_help)
+            .setView(frame)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                GoogleTiles.setApiKey(this, input.text.toString())
+                refreshTick++
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun testTilesKey() {
+        val key = GoogleTiles.apiKey(this)
+        Thread {
+            val err = GoogleTiles.testKey(key)
+            runOnUiThread {
+                val msg = if (err == null) getString(R.string.p_gtiles_test_ok)
+                    else getString(R.string.p_gtiles_test_fail, err)
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+            }
+        }.start()
     }
 
     private fun showRestartDialog() {

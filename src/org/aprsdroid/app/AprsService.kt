@@ -85,6 +85,8 @@ class AprsService : Service() {
         igateService?.stop()
         serviceScope.cancel()
         ServiceNotifier.instance.stop(this)
+        // Documented API event (doc/API.mdwn); was missing from the Kotlin port.
+        sendBroadcast(Intent(SERVICE_STOPPED))
         super.onDestroy()
     }
 
@@ -481,15 +483,17 @@ class AprsService : Service() {
                     flags = 0,
                 )
             )
-        }
 
-        sendBroadcast(
-            Intent(POSITION)
-                .putExtra(SOURCE, ap.sourceCall)
-                .putExtra(LOCATION, AprsPacket.position2location(ts, pos, cse))
-                .putExtra(CALLSIGN, objectname ?: ap.sourceCall)
-                .putExtra(PACKET, ap.toString())
-        )
+            // Broadcast only after the database write, so listeners (the map
+            // views) that reload on POSITION always see this station.
+            sendBroadcast(
+                Intent(POSITION)
+                    .putExtra(SOURCE, ap.sourceCall)
+                    .putExtra(LOCATION, AprsPacket.position2location(ts, pos, cse))
+                    .putExtra(CALLSIGN, name)
+                    .putExtra(PACKET, ap.toString())
+            )
+        }
     }
 
     // ---- post / log ----

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ cloud backup and device transfer: keep API keys out. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="aprsdroid_secrets.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="aprsdroid_secrets.xml" />
+    </device-transfer>
+</data-extraction-rules>

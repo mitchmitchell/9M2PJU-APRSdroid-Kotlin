@@ -216,6 +216,29 @@
 <!-- intended use is in map style menu: "file name of offline map (Offline)" -->
 <string name="map_offline"> %s (Offline)</string>
 <string name="map_objects">APRS Objects</string>
+<string name="map_type">Map type</string>
+<string name="map_terrain">Google: Terrain</string>
+<string name="map_gtiles_roadmap">Google tiles: Roadmap</string>
+<string name="map_gtiles_satellite">Google tiles: Satellite</string>
+<string name="map_gtiles_hybrid">Google tiles: Satellite + labels</string>
+<string name="map_gtiles_terrain">Google tiles: Terrain</string>
+<string name="map_need_tiles_key">Needs a Map Tiles API key (Settings → Map)</string>
+<string name="map_need_sdk_key">Needs mapsApiKey at build time</string>
+<string name="map_need_play_services">Needs Google Play services</string>
+<string name="map_gtiles_error">Google tiles unavailable, using OSM: %s</string>
+<string name="p__map">Map</string>
+<string name="p_map_type_summary">Current: %s</string>
+<string name="p_gtiles_key">Google Map Tiles API key</string>
+<string name="p_gtiles_key_summary_set">Key set (…%s). Stored on this device only; not exported or backed up.</string>
+<string name="p_gtiles_key_summary_unset">Not set. Needed for the \"Google tiles\" map types.</string>
+<string name="p_gtiles_key_hint">AIza…</string>
+<string name="p_gtiles_key_help">Enable \"Map Tiles API\" in Google Cloud, create an API key, restrict it to that API only and set a daily quota. Leave empty to remove the key.</string>
+<string name="p_gtiles_test">Test Google tiles key</string>
+<string name="p_gtiles_test_ok">Key works: Google accepted a tiles session.</string>
+<string name="p_gtiles_test_fail">Key test failed: %s</string>
+<string name="p_gmaps_sdk_status">Google Maps SDK</string>
+<string name="p_gmaps_sdk_on">Built with a Maps SDK key: \"Google:\" map types available.</string>
+<string name="p_gmaps_sdk_off">Built without mapsApiKey: \"Google:\" SDK map types hidden.</string>
 
 <!-- map view -->
 <string name="age">Show last...</string>

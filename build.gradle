@@ -41,6 +41,27 @@ ext {
     build_version = "APRSdroid ${build_revision} ${build_date}"
 }
 
+// ---- local.properties (never committed) ----
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+def localProp(String name, String envName = null) {
+    def v = project.ext.localProps.getProperty(name)
+    if ((v == null || v.trim().isEmpty()) && envName != null) v = System.getenv(envName)
+    return v == null ? "" : v.trim()
+}
+ext.localProps = localProps
+
+// Google Maps SDK key (build-time, restricted to this app's package + signing
+// certificate in Google Cloud). Set mapsApiKey= in local.properties, or the
+// MAPS_API_KEY environment variable in CI. Empty = Google SDK map types hidden.
+def mapsApiKey = localProp('mapsApiKey', 'MAPS_API_KEY')
+// Optional default for the Google Map Tiles API key; users can also enter
+// their own key at runtime in Settings -> Map.
+def mapsTilesApiKey = localProp('mapsTilesApiKey', 'MAPS_TILES_API_KEY')
+
 def versionCodeDate() {
     if (project.hasProperty("RELEASE_MINOR")) {
         return new Date().format("yyyyMMdd" + RELEASE_MINOR).toInteger()
@@ -62,6 +83,9 @@ android {
         resValue "string", "build_revision", "$build_revision"
         resValue "string", "build_date", "$build_date"
         resValue "string", "build_version", "$build_version"
+        manifestPlaceholders = [MAPS_API_KEY: mapsApiKey]
+        buildConfigField "boolean", "MAPS_SDK_KEY_SET", mapsApiKey.isEmpty() ? "false" : "true"
+        buildConfigField "String", "MAPS_TILES_API_KEY", "\"${mapsTilesApiKey}\""
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
@@ -108,7 +132,33 @@ android {
         }
     }
 
-    if (project.hasProperty("RELEASE_KEY_ALIAS")) {
+    // Signing with a PKCS#12 certificate (e.g. issued by your own CA) kept
+    // outside the repo. In local.properties:
+    //   signing.storeFile=C:/path/to/aprsdroid-sign.p12
+    //   signing.storePassword=...
+    //   signing.keyAlias=aprsdroid
+    //   signing.keyPassword=...          (usually the same as storePassword)
+    // When set, BOTH debug and release builds use it, so the Google Maps key
+    // only needs this one SHA-1 and debug/release install over each other.
+    def p12File = localProp('signing.storeFile')
+    if (!p12File.isEmpty()) {
+        signingConfigs {
+            p12 {
+                storeFile file(p12File)
+                storeType p12File.toLowerCase().endsWith('.jks') ? 'jks' : 'pkcs12'
+                storePassword localProp('signing.storePassword')
+                keyAlias localProp('signing.keyAlias')
+                def kp = localProp('signing.keyPassword')
+                keyPassword kp.isEmpty() ? localProp('signing.storePassword') : kp
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
+        buildTypes {
+            debug { signingConfig signingConfigs.p12 }
+            release { signingConfig signingConfigs.p12 }
+        }
+    } else if (project.hasProperty("RELEASE_KEY_ALIAS")) {
         signingConfigs {
             release {
                 storeFile file(RELEASE_STORE_FILE)
@@ -181,9 +231,10 @@ dependencies {
     // Material Components (for XML-based screens still in use)
     implementation 'com.google.android.material:material:1.12.0'
 
-    // Maps — OpenStreetMap only (see AGENTS.md). The Google Maps
-    // dependencies from the Scala version have been removed.
-    // OSM tile rendering / offline map support will be added with MapAct.
+    // Maps — OSM / Google Map Tiles render in the Mapsforge MapAct (libs/);
+    // the Google Maps SDK renders in GoogleMapAct and is only offered when a
+    // build-time mapsApiKey is set and Play services are present.
+    implementation 'com.google.android.gms:play-services-maps:19.0.0'
 
     // OkIO (used by APRS protocol)
     implementation 'com.squareup.okio:okio:3.9.0'

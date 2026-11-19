@@ -37,6 +37,10 @@ interface PositionDao {
     @Query("SELECT * FROM positions WHERE ts > :sinceTs ORDER BY call, _id")
     fun getAllStaPositions(sinceTs: Long): Flow<List<PositionEntity>>
 
+    /** One-shot variant of [getAllStaPositions] for the map trace loader. */
+    @Query("SELECT * FROM positions WHERE ts > :sinceTs ORDER BY call, _id")
+    suspend fun positionsSince(sinceTs: Long): List<PositionEntity>
+
     @Query("SELECT * FROM positions WHERE call = :call ORDER BY _id DESC")
     fun getPositionsForCall(call: String): Flow<List<PositionEntity>>
 

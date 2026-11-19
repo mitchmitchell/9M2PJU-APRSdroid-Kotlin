@@ -2,6 +2,7 @@ package org.aprsdroid.app
 
 import org.aprsdroid.app.ui.AprsBottomBar
 import org.aprsdroid.app.ui.AprsOverflowMenu
+import org.aprsdroid.app.ui.MapTypeMenu
 
 import android.app.AlertDialog
 import android.content.Context
@@ -77,7 +78,14 @@ import org.mapsforge.v3.android.maps.overlay.ItemizedOverlay
 import org.mapsforge.v3.android.maps.overlay.OverlayItem
 import org.mapsforge.v3.core.GeoPoint
 import java.io.File
+import android.os.Handler
+import android.os.Looper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.aprsdroid.app.data.AprsDatabase
 
 /**
@@ -130,6 +138,20 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     private var coordInfo by mutableStateOf("")
     private var acceptEnabled by mutableStateOf(false)
     private var showObjectsChecked by mutableStateOf(false)
+    private var currentModeTag by mutableStateOf("osm")
+    private var attribution by mutableStateOf<String?>(null)
+
+    private val uiScope = MainScope()
+    private val handler = Handler(Looper.getMainLooper())
+    private val attributionRunnable = Runnable { refreshAttribution() }
+    private var lastAttributionKey = ""
+
+    /** The map type this activity is showing (OSM or a Google tiles type). */
+    private fun currentMode(): MapMode {
+        MapModes.initialize(this)
+        return MapModes.all.firstOrNull { it.tag == currentModeTag && it.viewClass == MapAct::class.java }
+            ?: MapModes.all.first { it.tag == "osm" }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -138,6 +160,10 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
 
         targetcall = intent.dataString ?: ""
         showObjects = prefs.getShowObjects()
+        val mode = MapModes.defaultMapMode(this, prefs)
+        // The coordinate chooser always opens here, even when the default
+        // map type is a Google Maps SDK type — fall back to OSM then.
+        currentModeTag = if (mode.viewClass == MapAct::class.java) mode.tag else "osm"
         showObjectsChecked = showObjects
 
         setResult(RESULT_CANCELED)
@@ -168,7 +194,8 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         if (mv != null) {
             val pos = mv.mapPosition.mapPosition
             if (pos?.geoPoint != null) {
-                saveMapViewPosition(
+                MapData.saveCamera(
+                    prefs,
                     pos.geoPoint.latitudeE6 / 1000000.0f,
                     pos.geoPoint.longitudeE6 / 1000000.0f,
                     pos.zoomLevel.toFloat(),
@@ -186,6 +213,9 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     override fun onDestroy() {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         _viewModelStore.clear()
+        handler.removeCallbacks(attributionRunnable)
+        uiScope.cancel()
+        locReceiver.cancel()
         try {
             unregisterReceiver(locReceiver)
         } catch (_: Exception) {
@@ -218,6 +248,13 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                                     else Icons.Filled.VisibilityOff,
                                     contentDescription = "Toggle objects",
                                 )
+                            }
+                            // Map type picker (OSM / Google tiles / Google Maps SDK)
+                            MapTypeMenu(currentTag = currentModeTag) { mode ->
+                                if (!MapModes.switchTo(this@MapAct, prefs, mode, targetcall)) {
+                                    currentModeTag = mode.tag
+                                    reloadMapAndTheme()
+                                }
                             }
                             // Shared overflow menu
                             AprsOverflowMenu(
@@ -277,6 +314,19 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                     ) {
                         CircularProgressIndicator()
                     }
+                }
+
+                // Google Map Tiles attribution (required by Google's terms)
+                attribution?.let { text ->
+                    Text(
+                        text = "Google  $text",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Black,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .background(Color(0xB3FFFFFF))
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
                 }
 
                 // Coordinate chooser overlay
@@ -377,52 +427,10 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         super.onConfigurationChanged(c)
     }
 
-    private fun saveMapViewPosition(lat: Float, lon: Float, zoom: Float) {
-        prefs.prefs.edit()
-            .putFloat("map_lat", lat)
-            .putFloat("map_lon", lon)
-            .putFloat("map_zoom", zoom)
-            .commit()
-    }
-
     private fun loadMapViewPosition() {
         val mv = mapview ?: return
-        val defaultLat = 52.5075f
-        val defaultLon = 13.39027f
-        val savedLat = prefs.prefs.getFloat("map_lat", Float.NaN)
-        val savedLon = prefs.prefs.getFloat("map_lon", Float.NaN)
-        var lat: Float = defaultLat
-        var lon: Float = defaultLon
-        if (!savedLat.isNaN() && !savedLon.isNaN()) {
-            lat = savedLat
-            lon = savedLon
-        } else {
-            try {
-                val locMan = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                val provider = PeriodicGPS.bestProvider(locMan)
-                if (provider != null) {
-                    val loc = locMan.getLastKnownLocation(provider)
-                    if (loc != null) {
-                        lat = loc.latitude.toFloat()
-                        lon = loc.longitude.toFloat()
-                    } else {
-                        lat = defaultLat
-                        lon = defaultLon
-                    }
-                } else {
-                    lat = defaultLat
-                    lon = defaultLon
-                }
-            } catch (_: SecurityException) {
-                lat = defaultLat
-                lon = defaultLon
-            } catch (_: Throwable) {
-                lat = defaultLat
-                lon = defaultLon
-            }
-        }
-        val zoom = prefs.prefs.getFloat("map_zoom", 14.0f)
-        mv.controller.setCenter(GeoPoint(lat.toDouble(), lon.toDouble()))
+        val (pos, zoom) = MapData.loadCamera(this, prefs)
+        mv.controller.setCenter(GeoPoint(pos.lat, pos.lon))
         mv.controller.setZoom(zoom.toInt())
     }
 
@@ -465,14 +473,98 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
 
     private fun loadOnlineMap() {
         val mv = mapview ?: return
+        if (mv.mapFile != null) return
+        val mode = currentMode()
+        if (mode is GoogleTilesMode) {
+            loadGoogleTiles(mode)
+            return
+        }
+        attribution = null
         try {
-            if (mv.mapFile == null) {
-                val mapGen = OsmTileDownloader.create(this)
-                mapGen.setUserAgent(getString(R.string.build_version))
-                mv.setMapGenerator(mapGen)
-            }
+            val mapGen = OsmTileDownloader.create(this)
+            mapGen.setUserAgent(getString(R.string.build_version))
+            flushTileCaches(mv)
+            mv.setMapGenerator(mapGen)
         } catch (_: UnsupportedOperationException) {
             // ignore
+        }
+    }
+
+    /** Create/refresh the Google session off the main thread, then switch the tile source. */
+    private fun loadGoogleTiles(mode: GoogleTilesMode) {
+        uiScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    Result.success(GoogleTiles.session(this@MapAct, mode.tileType))
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }
+            val mv = mapview ?: return@launch
+            result.onSuccess { session ->
+                val gen = GoogleTileDownloader(session.token, GoogleTiles.apiKey(this@MapAct))
+                gen.setUserAgent(getString(R.string.build_version))
+                flushTileCaches(mv)
+                // Google's terms limit storing tiles: keep them out of the persistent cache.
+                mv.fileSystemTileCache.setPersistent(false)
+                mv.setMapGenerator(gen)
+                lastAttributionKey = ""
+                scheduleAttribution()
+            }.onFailure { e ->
+                Log.w(tag, "Google tiles unavailable", e)
+                Toast.makeText(
+                    this@MapAct,
+                    getString(R.string.map_gtiles_error, e.message ?: e.toString()),
+                    Toast.LENGTH_LONG,
+                ).show()
+                currentModeTag = "osm"
+                loadOnlineMap()
+            }
+        }
+    }
+
+    /**
+     * Mapsforge keys cached tiles by host name only, and all Google map
+     * types share one host — drop cached tiles whenever the source changes.
+     */
+    private fun flushTileCaches(mv: MapView) {
+        for (cache in listOf(mv.inMemoryTileCache, mv.fileSystemTileCache)) {
+            val cap = cache.capacity
+            cache.setCapacity(0)
+            cache.setCapacity(cap)
+        }
+    }
+
+    /** Called from the overlay on every redraw; debounces attribution lookups. */
+    fun onMapRedrawn() {
+        if (currentMode() !is GoogleTilesMode) return
+        scheduleAttribution()
+    }
+
+    private fun scheduleAttribution() {
+        handler.removeCallbacks(attributionRunnable)
+        handler.postDelayed(attributionRunnable, 1500)
+    }
+
+    private fun refreshAttribution() {
+        val mode = currentMode() as? GoogleTilesMode ?: run { attribution = null; return }
+        val mv = mapview ?: return
+        val proj = mv.projection ?: return
+        if (mv.width == 0 || mv.height == 0) return
+        val nw = proj.fromPixels(0, 0) ?: return
+        val se = proj.fromPixels(mv.width, mv.height) ?: return
+        val zoom = mv.mapPosition.zoomLevel.toInt()
+        val key = "${mode.tag}/$zoom/${nw.latitudeE6 / 10000}/${nw.longitudeE6 / 10000}"
+        if (key == lastAttributionKey) return
+        lastAttributionKey = key
+        uiScope.launch {
+            val text = withContext(Dispatchers.IO) {
+                GoogleTiles.attribution(
+                    this@MapAct, mode.tileType, zoom,
+                    nw.latitude, se.latitude, se.longitude, nw.longitude,
+                )
+            }
+            if (currentMode() == mode) attribution = text ?: attribution
         }
     }
 
@@ -541,7 +633,8 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                 val sta = runBlocking { db.stationDao().getStaPosition(targetcall) }
                 if (sta != null) {
                     runOnUiThread {
-                        mapview?.controller?.setCenter(GeoPoint(sta.lat.toDouble(), sta.lon.toDouble()))
+                        // lat/lon are stored as microdegrees: use the (Int, Int) E6 constructor.
+                        mapview?.controller?.setCenter(GeoPoint(sta.lat, sta.lon))
                     }
                 }
             }.start()
@@ -555,7 +648,11 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     }
 
     private fun startLoading() {
-        UIHelper.safeRegisterReceiver(this, locReceiver, IntentFilter(AprsService.UPDATE))
+        val filter = IntentFilter(AprsService.UPDATE)
+        // POSITION is sent after the station is written to the database, so a
+        // reload triggered by it always sees the newest position.
+        filter.addAction(AprsService.POSITION)
+        UIHelper.safeRegisterReceiver(this, locReceiver, filter)
         locReceiver.startTask(null)
     }
 
@@ -577,18 +674,14 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     }
 
     /**
-     * Load stations from Room for the map overlay.
+     * Load stations for the map overlay via the shared [MapData] loader.
      */
     private fun loadStations(): ArrayList<OSMStation> {
         val stations = ArrayList<OSMStation>()
-        val ageTs = System.currentTimeMillis() - prefs.getShowAge()
-        val allStations = runBlocking {
-            db.stationDao().neighborsRaw(prefs.getCallSsid(), ageTs)
-        }
-        for (sta in allStations) {
-            val symbol = sta.symbol ?: "/$"
-            val p = GeoPoint(sta.lat, sta.lon)
-            stations.add(OSMStation(ArrayList(), p, sta.call, sta.origin ?: "", symbol))
+        for (sta in MapData.loadStations(this, prefs, targetcall, showObjects)) {
+            val movelog = ArrayList<GeoPoint>(sta.trace.size)
+            for (p in sta.trace) movelog.add(GeoPoint(p.lat, p.lon))
+            stations.add(OSMStation(movelog, GeoPoint(sta.pos.lat, sta.pos.lon), sta.call, sta.origin ?: "", sta.symbol))
         }
         Log.d(tag, "total ${stations.size} items")
         return stations
@@ -738,6 +831,7 @@ class StationOverlay(
         }
         context.runOnUiThread {
             context.updateCoordinateInfoFromMap()
+            context.onMapRedrawn()
         }
     }
 

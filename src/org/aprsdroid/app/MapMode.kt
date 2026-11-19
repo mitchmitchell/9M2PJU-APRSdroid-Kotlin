@@ -5,80 +5,107 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
-import android.view.MenuItem
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
+import com.google.android.gms.maps.GoogleMap
 
 /**
- * Kotlin port of the Scala `MapMode` / `MapModes` system.
+ * Map renderers ("map types") and dispatch to the activity that shows them.
  *
- * Describes the available map renderers and dispatches to the right
- * activity. Per the project preferences (see AGENTS.md) the Kotlin
- * rewrite uses OpenStreetMap-based rendering only — the Google Maps
- * mode from the Scala version has been removed.
+ * - OSM and the Google Map Tiles types render in the Mapsforge-based
+ *   [MapAct], so station drawing, traces and the coordinate chooser are
+ *   shared.
+ * - The Google Maps SDK types render in [GoogleMapAct]. They need a
+ *   build-time key (`mapsApiKey=` in local.properties) and Google Play
+ *   services on the device.
  *
- * The OSM map activity (`MapAct`) is currently a Compose placeholder
- * while the full tile renderer + station overlay is being ported.
+ * Types that lack what they need report `isAvailable() == false` and are
+ * greyed out in the picker.
  */
 open class MapMode(
     val tag: String,
-    val menuId: Int,
-    val title: String?,
+    val titleRes: Int,
     val viewClass: Class<*>,
 ) {
     open fun isAvailable(ctx: Context): Boolean = true
+
+    /** Short reason shown in the picker when [isAvailable] is false. */
+    open fun unavailableReason(ctx: Context): String? = null
 }
 
-class MapsforgeOnlineMode(
-    tag: String,
-    menuId: Int,
-    title: String?,
-    val foo: String,
-) : MapMode(tag, menuId, title, MapAct::class.java)
+class MapsforgeOnlineMode(tag: String, titleRes: Int) : MapMode(tag, titleRes, MapAct::class.java)
 
-class MapsforgeFileMode(
+class GoogleTilesMode(
     tag: String,
-    menuId: Int,
-    title: String?,
-    val file: String,
-) : MapMode(tag, menuId, title, MapAct::class.java)
+    titleRes: Int,
+    val tileType: GoogleTiles.Type,
+) : MapMode(tag, titleRes, MapAct::class.java) {
+    override fun isAvailable(ctx: Context): Boolean = GoogleTiles.hasKey(ctx)
+    override fun unavailableReason(ctx: Context): String =
+        ctx.getString(R.string.map_need_tiles_key)
+}
+
+class GoogleMapMode(
+    tag: String,
+    titleRes: Int,
+    val mapType: Int,
+) : MapMode(tag, titleRes, GoogleMapAct::class.java) {
+
+    override fun isAvailable(ctx: Context): Boolean =
+        BuildConfig.MAPS_SDK_KEY_SET && playServicesOk(ctx)
+
+    override fun unavailableReason(ctx: Context): String =
+        if (!BuildConfig.MAPS_SDK_KEY_SET) ctx.getString(R.string.map_need_sdk_key)
+        else ctx.getString(R.string.map_need_play_services)
+
+    private fun playServicesOk(ctx: Context): Boolean = try {
+        GoogleApiAvailability.getInstance().isGooglePlayServicesAvailable(ctx) == ConnectionResult.SUCCESS
+    } catch (_: Throwable) {
+        false
+    }
+}
 
 object MapModes {
 
     private val allMapModes = mutableListOf<MapMode>()
 
     @JvmStatic
+    val all: List<MapMode>
+        get() = allMapModes
+
+    @JvmStatic
     fun initialize(ctx: Context) {
         if (allMapModes.isNotEmpty()) return
-        allMapModes += MapsforgeOnlineMode("osm", 0, null, "TODO")
+        allMapModes += MapsforgeOnlineMode("osm", R.string.map_osm)
+        allMapModes += GoogleMapMode("google", R.string.map_google, GoogleMap.MAP_TYPE_NORMAL)
+        allMapModes += GoogleMapMode("satellite", R.string.map_satellite, GoogleMap.MAP_TYPE_HYBRID)
+        allMapModes += GoogleMapMode("terrain", R.string.map_terrain, GoogleMap.MAP_TYPE_TERRAIN)
+        allMapModes += GoogleTilesMode(GoogleTiles.Type.ROADMAP.tag, R.string.map_gtiles_roadmap, GoogleTiles.Type.ROADMAP)
+        allMapModes += GoogleTilesMode(GoogleTiles.Type.SATELLITE.tag, R.string.map_gtiles_satellite, GoogleTiles.Type.SATELLITE)
+        allMapModes += GoogleTilesMode(GoogleTiles.Type.HYBRID.tag, R.string.map_gtiles_hybrid, GoogleTiles.Type.HYBRID)
+        allMapModes += GoogleTilesMode(GoogleTiles.Type.TERRAIN.tag, R.string.map_gtiles_terrain, GoogleTiles.Type.TERRAIN)
     }
 
     @JvmStatic
     fun reloadOfflineMaps(ctx: Context) {
-        // No-op for now — offline map discovery will be restored with MapAct.
+        // No-op — offline map discovery is handled by the tilepath preference.
     }
 
     @JvmStatic
     fun defaultMapMode(ctx: Context, prefs: PrefsWrapper): MapMode {
         initialize(ctx)
         val tag = prefs.getString("mapmode", "osm")
-        Log.d("MapModes", "tag is $tag")
         var default: MapMode? = null
         for (mode in allMapModes) {
-            Log.d("MapModes", "mode ${mode.tag} isA=${mode.isAvailable(ctx)}")
-            if (default == null && mode.isAvailable(ctx)) {
-                default = mode
-            }
-            if (mode.tag == tag && mode.isAvailable(ctx)) {
-                Log.d("MapModes", "mode ${mode.tag} is tagged")
-                return mode
-            }
+            val avail = mode.isAvailable(ctx)
+            if (default == null && avail) default = mode
+            if (mode.tag == tag && avail) return mode
         }
-        Log.d("MapModes", "mode ${default?.tag} is default")
+        Log.d("MapModes", "mode $tag unavailable, using ${default?.tag}")
         return default ?: allMapModes.first()
     }
 
-    @JvmStatic
-    fun startMap(ctx: Context, prefs: PrefsWrapper, targetcall: String?) {
-        val mm = defaultMapMode(ctx, prefs)
+    private fun mapIntent(ctx: Context, mm: MapMode, targetcall: String?): Intent {
         val intent = Intent(ctx, mm.viewClass)
         if (!targetcall.isNullOrEmpty()) {
             intent.data = Uri.parse(targetcall)
@@ -86,23 +113,40 @@ object MapModes {
             intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-        ctx.startActivity(intent)
+        return intent
+    }
+
+    @JvmStatic
+    fun startMap(ctx: Context, prefs: PrefsWrapper, targetcall: String?) {
+        val mm = defaultMapMode(ctx, prefs)
+        ctx.startActivity(mapIntent(ctx, mm, targetcall))
         if (ctx is Activity) {
             @Suppress("DEPRECATION")
             ctx.overridePendingTransition(0, 0)
         }
     }
 
+    /**
+     * Make [mode] the default. If it is rendered by a different activity
+     * than [current], open that activity (keeping the tracked call) and
+     * finish [current]; returns true in that case. Returns false when the
+     * caller should just re-apply the mode itself.
+     */
     @JvmStatic
-    fun setDefault(prefs: PrefsWrapper, tag: String) {
-        prefs.set("mapmode", tag)
+    fun switchTo(current: Activity, prefs: PrefsWrapper, mode: MapMode, targetcall: String?): Boolean {
+        setDefault(prefs, mode.tag)
+        if (mode.viewClass == current.javaClass) return false
+        val intent = mapIntent(current, mode, targetcall)
+        intent.flags = intent.flags and Intent.FLAG_ACTIVITY_REORDER_TO_FRONT.inv()
+        current.startActivity(intent)
+        current.finish()
+        @Suppress("DEPRECATION")
+        current.overridePendingTransition(0, 0)
+        return true
     }
 
     @JvmStatic
-    fun fromMenuItem(mi: MenuItem): MapMode? {
-        for (mode in allMapModes) {
-            if (mode.menuId == mi.itemId) return mode
-        }
-        return null
+    fun setDefault(prefs: PrefsWrapper, tag: String) {
+        prefs.set("mapmode", tag)
     }
 }

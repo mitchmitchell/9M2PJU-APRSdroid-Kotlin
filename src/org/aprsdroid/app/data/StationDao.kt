@@ -32,8 +32,20 @@ interface StationDao {
     @Query("SELECT * FROM stations ORDER BY call LIMIT :limit")
     fun getStations(limit: String): Flow<List<StationEntity>>
 
-    @Query("SELECT * FROM stations WHERE :sel ORDER BY call LIMIT :limit")
-    fun getStationsFiltered(sel: String, limit: String): Flow<List<StationEntity>>
+    /**
+     * Stations for the map views — matches the Scala `MapLoaderBase.load_stations`
+     * filter: everything heard since [ts] (objects/items only when
+     * [includeObjects]), plus [mycall] and the tracked [targetcall]
+     * regardless of age.
+     */
+    @Query(
+        """
+        SELECT * FROM stations
+        WHERE ((:includeObjects OR origin IS NULL) AND ts > :ts)
+           OR call = :mycall OR call = :targetcall
+        """
+    )
+    suspend fun mapStations(ts: Long, mycall: String, targetcall: String, includeObjects: Boolean): List<StationEntity>
 
     /**
      * Stations within a lat/lon rectangle — matches Scala `getRectStations`.
