@@ -62,6 +62,8 @@ fun ConversationsScreen(
     val conversations by viewModel.conversations.collectAsState()
     var showNewDialog by remember { mutableStateOf(false) }
     var contextMenuCall by remember { mutableStateOf<String?>(null) }
+    var openService by remember { mutableStateOf<org.aprsdroid.app.AprsServices.Service?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Scaffold(
         topBar = {
@@ -84,32 +86,58 @@ fun ConversationsScreen(
             )
         },
     ) { padding ->
-        if (conversations.isEmpty()) {
-            Box(Modifier.fillMaxSize().padding(padding)) {
-                EmptyState(
-                    title = "No messages yet",
-                    body = "Messages sent to your callsign appear here. Choose New message to write to another station.",
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+            // Room for the "New message" button, so it never covers the last row.
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 88.dp),
+        ) {
+            item { ServiceCards(onOpen = { openService = it }) }
+            item {
+                Text(
+                    "Conversations",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
                 )
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-            ) {
-                items(conversations) { message ->
-                    ConversationItem(
-                        message = message,
-                        onClick = { onConversationClick(message.call) },
-                        onLongClick = { contextMenuCall = message.call },
+            if (conversations.isEmpty()) {
+                item {
+                    Text(
+                        "No messages yet. Messages sent to your callsign appear here. " +
+                            "Choose New message to write to another station, or try a service above.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
-                    HorizontalDivider(color = org.aprsdroid.app.ui.theme.AprsTheme.colors.line.copy(alpha = 0.45f))
                 }
+            }
+            items(conversations) { message ->
+                ConversationItem(
+                    message = message,
+                    onClick = { onConversationClick(message.call) },
+                    onLongClick = { contextMenuCall = message.call },
+                )
+                HorizontalDivider(color = org.aprsdroid.app.ui.theme.AprsTheme.colors.line.copy(alpha = 0.45f))
             }
         }
     }
 
     // New conversation dialog
+    openService?.let { service ->
+        ServiceDialog(
+            service = service,
+            onDismiss = { openService = null },
+            onSend = { callsign, text ->
+                openService = null
+                sendMessage(context, callsign, text)
+                // Open the conversation so the reply is seen when it arrives.
+                onConversationClick(callsign)
+            },
+        )
+    }
+
     if (showNewDialog) {
         NewConversationDialog(
             onDismiss = { showNewDialog = false },
