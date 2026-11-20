@@ -44,7 +44,7 @@ object UpdateChecker {
 
     private const val TAG = "UpdateChecker"
     private const val REPO_OWNER = "mitchmitchell"
-    private const val REPO_NAME = "9M2PJU-APRSdroid-Kotlin"
+    private const val REPO_NAME = "APRSDroid-TAK"
     private const val API_URL = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
     private const val RELEASES_URL = "https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest"
 
@@ -140,7 +140,7 @@ object UpdateChecker {
         return try {
             conn.requestMethod = "GET"
             conn.setRequestProperty("Accept", "application/vnd.github+json")
-            conn.setRequestProperty("User-Agent", "APRSdroid")
+            conn.setRequestProperty("User-Agent", "APRSDroid-TAK")
             conn.connectTimeout = 10000
             conn.readTimeout = 10000
             if (conn.responseCode != 200) {
@@ -186,7 +186,7 @@ object UpdateChecker {
         val conn = (URL(FALLBACK_URL).openConnection() as HttpURLConnection)
         return try {
             conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", "APRSdroid")
+            conn.setRequestProperty("User-Agent", "APRSDroid-TAK")
             conn.connectTimeout = 10000
             conn.readTimeout = 10000
             if (conn.responseCode != 200) {
@@ -268,7 +268,7 @@ object UpdateChecker {
                 try {
                     val conn = (URL(info.apkUrl).openConnection() as HttpURLConnection)
                     conn.requestMethod = "GET"
-                    conn.setRequestProperty("User-Agent", "APRSdroid")
+                    conn.setRequestProperty("User-Agent", "APRSDroid-TAK")
                     conn.connectTimeout = 30000
                     conn.readTimeout = 60000
                     conn.connect()

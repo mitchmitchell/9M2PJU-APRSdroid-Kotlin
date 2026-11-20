@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- APRSdroid strings.xml - this file contains strings which need to be translated -->
 <resources>
-<string name="app_name">APRSdroid</string>
+<string name="app_name">APRSDroid-TAK</string>
 <string name="app_prefs">APRSdroid Preferences</string>
 <string name="menu">Menu</string>
 <string name="app_map">APRSdroid Map</string>
@@ -114,13 +114,13 @@
 <string name="up_to_date">You are running the latest version (%s).</string>
 <string name="update_check_failed">Could not check for updates. Check your internet connection.</string>
 <string name="report_bug">Report a bug</string>
-<string name="report_bug_subject">APRSdroid bug report</string>
+<string name="report_bug_subject">APRSDroid-TAK bug report</string>
 <string name="report_bug_body">Please describe the bug:\n\n\nApp version: %1$s\nAndroid: %2$s\nDevice: %3$s\n</string>
 <string name="no_email_app">No app found to open the issue tracker.</string>
 
 <!-- about dialog -->
-<string name="ad_title">About APRSdroid</string>
-<string name="ad_copyright">APRSdroid\n
+<string name="ad_title">About APRSDroid-TAK</string>
+<string name="ad_copyright">APRSDroid-TAK\n
 	Copyright © 2009–2026 the APRSdroid authors\n
 	\n\n
 	Based on NA7Q\'s fork of APRSdroid by Georg Lukas (DO1GL)\n

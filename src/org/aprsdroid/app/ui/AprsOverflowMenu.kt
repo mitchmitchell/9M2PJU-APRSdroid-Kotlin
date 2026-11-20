@@ -157,7 +157,7 @@ fun AprsOverflowMenu(
 }
 
 /** Where About and Report a bug point. One place to change when the project gets a home page. */
-private const val PROJECT_URL = "https://github.com/mitchmitchell/9M2PJU-APRSdroid-Kotlin"
+private const val PROJECT_URL = "https://github.com/mitchmitchell/APRSDroid-TAK"
 
 @Composable
 private fun AboutDialog(onDismiss: () -> Unit) {
@@ -169,11 +169,11 @@ private fun AboutDialog(onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("APRSdroid") },
+        title = { Text("APRSDroid-TAK") },
         text = {
             Text(
                 "Version $version\n\n" +
-                "An Android app for the Automatic Packet Reporting System (APRS). " +
+                "APRSdroid with a TAK link: an Android app for the Automatic Packet Reporting System (APRS). " +
                 "Free software under the GNU GPL v2.\n\n" +
                 "Built on the work of:\n" +
                 "• Bob Bruninga, WB4APR: creator of APRS\n" +
