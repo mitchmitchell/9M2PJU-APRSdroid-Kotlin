@@ -276,6 +276,12 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                 AndroidView(
                     factory = { ctx ->
                         MapView(ctx).also { mv ->
+                            // Mapsforge only handles touch gestures (drag, pinch
+                            // zoom, double-tap) on a clickable view. The old XML
+                            // layout set these; a view created in code must too.
+                            mv.isClickable = true
+                            mv.isFocusable = true
+                            mv.isFocusableInTouchMode = true
                             mv.setBuiltInZoomControls(true)
                             mv.overlays.add(staoverlay)
                             mv.setTextScale(resources.displayMetrics.density)
