@@ -52,41 +52,68 @@ class BluetoothTnc(private val service: AprsService, prefs: PrefsWrapper) :
         return false
     }
 
+    @Volatile
+    private var tnc: TncProto? = null
+
     private fun connectAndRun(device: BluetoothDevice) {
+        val label = try { device.name ?: device.address } catch (_: SecurityException) { device.address }
         try {
+            service.postAddPost(
+                org.aprsdroid.app.data.PostEntity.TYPE_INFO, R.string.post_info,
+                service.getString(R.string.bt_connecting_to_spp, label),
+            )
             val s = device.createRfcommSocketToServiceRecord(uuid)
-            s.connect()
+            try {
+                s.connect()
+            } catch (e: IOException) {
+                Log.d(TAG, "Bluetooth connect failed: $e")
+                try { s.close() } catch (_: IOException) {}
+                service.postLinkOff(R.string.p_link_bt)
+                service.postAbort(service.getString(R.string.bt_error_connect, label))
+                return
+            }
             socket = s
-            val tnc = KissProto(service, s.inputStream, s.outputStream)
+            // The protocol the user chose (KISS, TNC2 or Kenwood), created once:
+            // creating it sends the TNC its init string, so it must not be redone per packet.
+            val proto = AprsBackend.instanciateProto(service, s.inputStream, s.outputStream)
+            tnc = proto
             service.postLinkOn(R.string.p_link_bt)
             service.postPosterStarted()
             while (Thread.currentThread() == conn && s.isConnected) {
-                val line = tnc.readPacket()
+                val line = proto.readPacket()
                 if (line.isEmpty()) break
                 Log.d(TAG, "recv: $line")
                 service.postSubmit(line)
             }
         } catch (e: IOException) {
-            Log.d(TAG, "Bluetooth IOException: $e")
-            service.postLinkOff(R.string.p_link_bt)
-            service.postAbort(e.toString())
+            // Closing the socket in stop() also lands here; only report a real drop.
+            if (conn != null) {
+                Log.d(TAG, "Bluetooth IOException: $e")
+                service.postLinkOff(R.string.p_link_bt)
+                service.postAbort(e.toString())
+            }
+        } catch (e: SecurityException) {
+            service.postAbort("Bluetooth permission was denied. Allow Nearby devices for this app.")
+        } finally {
+            tnc = null
         }
     }
 
     override fun update(packet: APRSPacket): String {
-        val s = socket ?: return "BT disconnected"
-        return if (s.isConnected) {
-            // Reuse a single KissProto instance for writes
-            val tnc = KissProto(service, s.inputStream, s.outputStream)
-            tnc.writePacket(packet)
+        val proto = tnc ?: return "BT disconnected"
+        return try {
+            synchronized(proto) { proto.writePacket(packet) }
             "BT OK"
-        } else {
-            "BT disconnected"
+        } catch (e: IOException) {
+            "BT error: ${e.message}"
         }
     }
 
     override fun stop() {
         conn = null
+        try {
+            tnc?.stop()
+        } catch (_: Exception) {}
         try {
             socket?.close()
         } catch (_: IOException) {}

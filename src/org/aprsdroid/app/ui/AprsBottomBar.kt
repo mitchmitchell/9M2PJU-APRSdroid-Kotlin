@@ -135,7 +135,7 @@ fun TransmitStrip(service: ServiceController) {
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = if (running) lampColor else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -145,7 +145,8 @@ fun TransmitStrip(service: ServiceController) {
                 modifier = Modifier.heightIn(min = 48.dp),
                 shape = RoundedCornerShape(10.dp),
             ) {
-                Text("Send position", maxLines = 1)
+                // "Send position" is too wide beside the status on a phone; "Beacon" is the APRS word for it.
+                Text("Beacon", maxLines = 1)
             }
             Spacer(Modifier.width(8.dp))
             Button(
@@ -160,7 +161,7 @@ fun TransmitStrip(service: ServiceController) {
                     contentColor = MaterialTheme.colorScheme.onTertiary,
                 ),
             ) {
-                Text(if (running) "Stop tracking" else "Start tracking", maxLines = 1, fontWeight = FontWeight.Bold)
+                Text(if (running) "Stop" else "Start tracking", maxLines = 1, fontWeight = FontWeight.Bold)
             }
         }
     }
