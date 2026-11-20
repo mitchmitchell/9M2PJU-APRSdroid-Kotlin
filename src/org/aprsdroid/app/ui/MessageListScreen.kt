@@ -91,6 +91,9 @@ fun MessageListScreen(
     var inputText by remember { mutableStateOf("") }
     var contextMenuFor by remember { mutableStateOf<MessageEntity?>(null) }
     var showStartTracking by remember { mutableStateOf(false) }
+    // When this conversation is with a known service, offer its commands above the text box.
+    val service = remember(viewModel.targetCall) { org.aprsdroid.app.AprsServices.forCallsign(viewModel.targetCall) }
+    var showService by remember { mutableStateOf(false) }
 
     // Auto-scroll to bottom when new messages arrive
     LaunchedEffect(messages.size) {
@@ -124,6 +127,23 @@ fun MessageListScreen(
             )
         },
         bottomBar = {
+          Column {
+            if (service != null) {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp),
+                    ) {
+                        Text(
+                            "${service.title}: an automated service.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { showService = true }) { Text("Commands") }
+                    }
+                }
+            }
             MessageInputBar(
                 text = inputText,
                 onTextChange = { inputText = it },
@@ -137,6 +157,7 @@ fun MessageListScreen(
                     }
                 },
             )
+          }
         },
     ) { padding ->
         if (messages.isEmpty()) {
@@ -184,6 +205,18 @@ fun MessageListScreen(
             },
             onResend = {
                 resendMessage(context, msg)
+            },
+        )
+    }
+
+    if (showService && service != null) {
+        ServiceDialog(
+            service = service,
+            onDismiss = { showService = false },
+            onSend = { callsign, text ->
+                showService = false
+                sendMessage(context, callsign, text)
+                if (!AprsService.running) showStartTracking = true
             },
         )
     }
@@ -369,7 +402,7 @@ private fun MessageContextMenu(
 
 // --- Message operations ---
 
-private fun sendMessage(context: Context, targetCall: String, text: String) {
+internal fun sendMessage(context: Context, targetCall: String, text: String) {
     val scope = kotlinx.coroutines.MainScope()
     scope.launch(Dispatchers.IO) {
         try {
