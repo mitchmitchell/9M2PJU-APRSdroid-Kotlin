@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -63,11 +64,39 @@ fun PostListScreen(
     val running = rememberServiceRunning()
     var contextMenuCall by remember { mutableStateOf<String?>(null) }
 
+    // Follow: keep the newest entry in view as packets arrive. On unless the user turns it off.
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { org.aprsdroid.app.PrefsWrapper(context) }
+    var follow by remember { mutableStateOf(prefs.getBoolean("log_follow", true)) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val newestId = posts.firstOrNull()?.id
+    androidx.compose.runtime.LaunchedEffect(newestId, follow) {
+        // Do not yank the list away while the user is dragging it.
+        if (follow && newestId != null && !listState.isScrollInProgress) listState.scrollToItem(0)
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Log") },
-                actions = { AprsOverflowMenu(onPreferences = onPreferences) },
+                actions = {
+                    Row(
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        modifier = Modifier.toggleable(
+                            value = follow,
+                            role = androidx.compose.ui.semantics.Role.Switch,
+                            onValueChange = {
+                                follow = it
+                                prefs.prefs.edit().putBoolean("log_follow", it).apply()
+                            },
+                        ).padding(horizontal = 8.dp),
+                    ) {
+                        Text("Follow newest", style = MaterialTheme.typography.labelLarge)
+                        androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+                        androidx.compose.material3.Switch(checked = follow, onCheckedChange = null)
+                    }
+                    AprsOverflowMenu(onPreferences = onPreferences)
+                },
             )
         },
         bottomBar = {
@@ -88,7 +117,7 @@ fun PostListScreen(
                     else "Start tracking to send your position and hear other stations.",
                 )
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
+                LazyColumn(Modifier.fillMaxSize(), state = listState) {
                     items(posts, key = { it.id }) { post ->
                         PostItem(
                             post = post,

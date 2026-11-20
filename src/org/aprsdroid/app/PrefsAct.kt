@@ -193,6 +193,73 @@ class PrefsAct : ComponentActivity() {
         ))
 
         // ---- Map category ----
+        // ---- optional online sources the user sets up themselves ----
+        items.add(PrefItem.Category(title = "Online lookups"))
+        val historyUrl = OnlineLookups.get(this, OnlineLookups.KEY_HISTORY_URL)
+        items.add(PrefItem.Clickable(
+            title = "History server",
+            summary = if (historyUrl.isEmpty()) "Not set. Tracks and weather trends use what this device has heard."
+                else historyUrl,
+            onClick = {
+                secretDialog(
+                    "History server", "Address of a history server you run, for example https://aprs.example.net. " +
+                        "Leave empty to use only what this device has heard.",
+                    OnlineLookups.KEY_HISTORY_URL, "https://", password = false,
+                )
+            },
+        ))
+        items.add(PrefItem.Clickable(
+            title = "History server token",
+            summary = if (OnlineLookups.get(this, OnlineLookups.KEY_HISTORY_TOKEN).isEmpty()) "None"
+                else "Set",
+            enabled = historyUrl.isNotEmpty(),
+            onClick = {
+                secretDialog(
+                    "History server token", "Sent as a bearer token, if your server asks for one.",
+                    OnlineLookups.KEY_HISTORY_TOKEN, "Token", password = true,
+                )
+            },
+        ))
+        val qrzUser = OnlineLookups.get(this, OnlineLookups.KEY_QRZ_USER)
+        items.add(PrefItem.Clickable(
+            title = "QRZ.com username",
+            summary = if (qrzUser.isEmpty()) "Not set. Station pages link to QRZ.com instead of showing the operator."
+                else qrzUser,
+            onClick = {
+                secretDialog(
+                    "QRZ.com username", "Your QRZ.com callsign login. Full records need QRZ's XML data subscription; " +
+                        "without it QRZ returns only a few fields.",
+                    OnlineLookups.KEY_QRZ_USER, "Callsign", password = false,
+                )
+            },
+        ))
+        items.add(PrefItem.Clickable(
+            title = "QRZ.com password",
+            summary = if (OnlineLookups.get(this, OnlineLookups.KEY_QRZ_PASSWORD).isEmpty()) "Not set" else "Set",
+            enabled = qrzUser.isNotEmpty(),
+            onClick = {
+                secretDialog(
+                    "QRZ.com password", "Kept on this device only, and left out of backups.",
+                    OnlineLookups.KEY_QRZ_PASSWORD, "Password", password = true,
+                )
+            },
+        ))
+        items.add(PrefItem.Clickable(
+            title = "Test QRZ.com login",
+            enabled = OnlineLookups.hasQrz(this),
+            onClick = {
+                Thread {
+                    val err = OnlineLookups.testQrz(this)
+                    runOnUiThread {
+                        Toast.makeText(
+                            this, if (err == null) "QRZ.com login works." else "QRZ.com login failed: $err",
+                            Toast.LENGTH_LONG,
+                        ).show()
+                    }
+                }.start()
+            },
+        ))
+
         items.add(PrefItem.Category(title = getString(R.string.p__map)))
         MapModes.initialize(this)
         val availableModes = MapModes.all.filter { it.isAvailable(this) }
@@ -493,6 +560,40 @@ class PrefsAct : ComponentActivity() {
             .setView(frame)
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 GoogleTiles.setApiKey(this, input.text.toString())
+                refreshTick++
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    /** Edit one value kept with the secrets (out of backups). */
+    private fun secretDialog(title: String, help: String, key: String, hint: String, password: Boolean) {
+        val input = android.widget.EditText(this).apply {
+            this.hint = hint
+            setSingleLine(true)
+            inputType = if (password) {
+                android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            } else {
+                android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI
+            }
+            // Never show a stored password back; an empty box keeps nothing by mistake only if saved.
+            if (!password) setText(OnlineLookups.get(this@PrefsAct, key))
+        }
+        val pad = (resources.displayMetrics.density * 20).toInt()
+        val frame = android.widget.FrameLayout(this).apply {
+            setPadding(pad, pad / 2, pad, 0)
+            addView(input)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setMessage(help)
+            .setView(frame)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                OnlineLookups.set(this, key, input.text.toString())
+                refreshTick++
+            }
+            .setNeutralButton("Clear") { _, _ ->
+                OnlineLookups.set(this, key, "")
                 refreshTick++
             }
             .setNegativeButton(android.R.string.cancel, null)

@@ -1049,7 +1049,7 @@ class StationOverlay(
             val disc = Paint().apply { color = 0xf7ffffff.toInt(); isAntiAlias = true }
             val ring = Paint().apply {
                 color = 0xff1c2f51.toInt(); isAntiAlias = true
-                style = Paint.Style.STROKE; strokeWidth = drawSize / 8f
+                style = Paint.Style.STROKE; strokeWidth = drawSize / 16f
             }
             val countPaint = Paint().apply {
                 color = 0xff0d182d.toInt(); isAntiAlias = true
