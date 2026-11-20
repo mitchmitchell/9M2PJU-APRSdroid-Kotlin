@@ -101,12 +101,7 @@ Setup is described in [doc/MAPS-AND-ATAK.md](doc/MAPS-AND-ATAK.md).
 
 ---
 
-## Screenshots
-
-<div align="center">
-
-| Splash | Log | Hub |
-|:---:|:---:|:---:|
+|:---:|:---:|
 | ![Splash](docs/assets/splash-user.jpg) | ![Log](docs/assets/screenshots/screenshot-log.png) | ![Hub](docs/assets/screenshots/screenshot-hub.png) |
 
 | Map | Messages | Preferences |
@@ -145,22 +140,6 @@ GPS location on first open. To use offline maps:
 5. (Optional) Toggle **"Enable Hardware Acceleration"** for smoother
    map rendering (on by default)
 6. Open **Map** — offline tiles will load without internet
-
-#### Malaysia, Singapore & Brunei offline map
-
-A ready-to-use offline map for Malaysia, Singapore, and Brunei is
-published by the 9M2PJU Mod project:
-
-> [**Download Malaysia Offline Maps**](https://github.com/9M2PJU/APRSdroid-9M2PJU-Mod/releases/tag/maps-v1.0)
-> (528 MB zip, contains MapsForge `.map` + MBTiles files)
-
-**Installation:**
-1. Download and extract the zip file on your computer
-2. Copy `malaysia-singapore-brunei.map` to your phone (any folder)
-3. In APRSdroid: **Menu** → **Preferences** → **OSM Maps** → **Select MapsforgeV3 or .mbtiles map**
-4. Select the `.map` file you copied
-5. Enable **"Enable offline mapping"**
-6. Open **Map** — the offline map loads without internet
 
 #### Other map sources
 

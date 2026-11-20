@@ -114,24 +114,12 @@ jobs:
           echo "Signed APK: $apk"
           "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --print-certs "$apk" | head -20
 
-      - name: Verify signer identity
-        run: |
-          apk=$(find build/outputs/apk/release -name '*.apk' ! -name '*-unsigned.apk' | head -1)
-          dn=$("$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" verify --print-certs "$apk" \
-            | grep -i 'DN:' | head -1)
-          echo "Signer DN: $dn"
-          if echo "$dn" | grep -q "HamRadio.my"; then
-            echo "::notice::APK signed by HamRadio.my organization key"
-          else
-            echo "::warning::APK signer DN does not contain 'HamRadio.my': $dn"
-          fi
-
       - name: Stage release APK
         run: |
           mkdir -p artifacts
           apk=$(find build/outputs/apk/release -name '*.apk' ! -name '*-unsigned.apk' | head -1)
           tag="${GITHUB_REF_NAME:-untagged}"
-          out="artifacts/APRSdroid-9M2PJU-Mod-${tag}.apk"
+          out="artifacts/APRSDroid-TAK-${tag}.apk"
           cp "$apk" "$out"
           ls -la artifacts/
 
@@ -139,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: apk-release
-          path: artifacts/APRSdroid-9M2PJU-Mod-*.apk
+          path: artifacts/APRSDroid-TAK-*.apk
           if-no-files-found: error
 
       - name: Upload lint reports
@@ -183,29 +171,10 @@ jobs:
           name: apk-release
           path: release-assets
 
-      - name: Update version.json for in-app update fallback
-        run: |
-          tag="${GITHUB_REF_NAME}"
-          apk_name=$(ls release-assets/*.apk | head -1 | xargs basename)
-          apk_url="https://github.com/9M2PJU/APRSdroid-9M2PJU-Mod/releases/download/${tag}/${apk_name}"
-          date=$(date -u +"%Y-%m-%d")
-          printf '{\n  "version": "%s",\n  "apkUrl": "%s",\n  "apkName": "%s",\n  "date": "%s"\n}\n' \
-            "$tag" "$apk_url" "$apk_name" "$date" > docs/version.json
-          echo "Generated docs/version.json:"
-          cat docs/version.json
-
-      - name: Commit version.json to master
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/version.json
-          git commit -m "chore: update version.json for ${GITHUB_REF_NAME} [skip ci]" || echo "No changes to commit"
-          git push origin master
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}-9M2PJU
+          name: ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           fail_on_unmatched_files: true
