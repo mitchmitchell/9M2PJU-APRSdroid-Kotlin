@@ -101,17 +101,6 @@ Setup is described in [doc/MAPS-AND-ATAK.md](doc/MAPS-AND-ATAK.md).
 
 ---
 
-|:---:|:---:|
-| ![Splash](docs/assets/splash-user.jpg) | ![Log](docs/assets/screenshots/screenshot-log.png) | ![Hub](docs/assets/screenshots/screenshot-hub.png) |
-
-| Map | Messages | Preferences |
-|:---:|:---:|:---:|
-| ![Map](docs/assets/screenshots/screenshot-map.png) | ![Messages](docs/assets/screenshots/screenshot-messages.png) | ![Preferences](docs/assets/screenshots/screenshot-prefs.png) |
-
-</div>
-
----
-
 ## Quick Start
 
 ### Installation
