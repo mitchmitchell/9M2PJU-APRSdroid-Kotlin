@@ -213,10 +213,12 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     override fun onResume() {
         super.onResume()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
+        org.mapsforge.v3.android.maps.mapgenerator.tiledownloader.TileDownloader.onError = { onTileError(it) }
         mapview?.requestFocus()
     }
 
     override fun onPause() {
+        org.mapsforge.v3.android.maps.mapgenerator.tiledownloader.TileDownloader.onError = null
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         val mv = mapview
         if (mv != null) {
@@ -243,7 +245,33 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         super.onStop()
     }
 
+    /** The online tile source in use, kept so a request in flight can be cut when the map closes. */
+    private var tileSource: org.mapsforge.v3.android.maps.mapgenerator.tiledownloader.TileDownloader? = null
+    private var lastTileErrorShown = 0L
+
+    /**
+     * Tile servers (OpenStreetMap's in particular) require a User-Agent that
+     * identifies the app and gives a contact, and block generic ones.
+     */
+    private fun tileUserAgent(): String =
+        "APRSDroid-TAK/${BuildConfig.VERSION_NAME} (+https://github.com/mitchmitchell/APRSDroid-TAK)"
+
+    /** Tell the user why the map is blank, at most once a minute. Called on the map worker thread. */
+    private fun onTileError(reason: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastTileErrorShown < 60_000) return
+        lastTileErrorShown = now
+        runOnUiThread {
+            if (!isFinishing) {
+                Toast.makeText(this, "Map tiles could not be loaded: $reason", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     override fun onDestroy() {
+        // MapView.destroy() waits for the tile worker thread on the main thread.
+        // Cut any request it is stuck in first, so closing the map cannot freeze the app.
+        tileSource?.abort()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         _viewModelStore.clear()
         handler.removeCallbacks(attributionRunnable)
@@ -554,7 +582,8 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         attribution = null
         try {
             val mapGen = OsmTileDownloader.create(this)
-            mapGen.setUserAgent(getString(R.string.build_version))
+            mapGen.userAgent = tileUserAgent()
+            tileSource = mapGen
             mv.setMapGenerator(mapGen)
         } catch (e: Exception) {
             Log.e(tag, "could not set the OSM tile source", e)
@@ -576,7 +605,8 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
             val mv = mapview ?: return@launch
             result.onSuccess { session ->
                 val gen = GoogleTileDownloader(session.token, GoogleTiles.apiKey(this@MapAct))
-                gen.setUserAgent(getString(R.string.build_version))
+                gen.userAgent = tileUserAgent()
+                tileSource = gen
                 try {
                     mv.setMapGenerator(gen)
                 } catch (e: Exception) {

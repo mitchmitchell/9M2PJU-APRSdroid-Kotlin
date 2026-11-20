@@ -78,3 +78,14 @@ objects, items) is sent as Cursor-on-Target. Changes apply immediately.
   (same UID, group and file names) from the app's own symbol sheet.
 - Each event also carries `<__aprs symbol=".." source="rf|aprs-is"
   origin=".."/>` in its detail for ATAK plugins.
+
+## Note on the bundled Mapsforge library
+
+`libs/mapsforge-map-0.3.0-jar-with-dependencies.jar` is Mapsforge 0.3 (LGPL)
+with one class removed:
+`org.mapsforge.v3.android.maps.mapgenerator.tiledownloader.TileDownloader`.
+Its replacement is in this repository at
+`src/org/mapsforge/v3/android/maps/mapgenerator/tiledownloader/TileDownloader.kt`.
+The original had no network timeouts, which could freeze the app when a tile
+request stalled, and crashed on a response that was not a 256x256 image. To
+go back to the stock class, restore the original jar and delete that file.
