@@ -118,9 +118,9 @@ class PrefsWrapper(val context: Context) {
         )
         val link = AprsBackend.defaultProtoInfo(this).link
         return when (link) {
-            "afsk" -> "$proto, ${getListItemName(link, "afsk12", R.array.p_afsk_ev, R.array.p_afsk_e)}"
-            "aprsis" -> "$proto, ${getListItemName(link, "tcp", R.array.p_aprsis_ev, R.array.p_aprsis_e)}"
-            "link" -> "$proto, ${getListItemName(link, "bluetooth", R.array.p_link_ev, R.array.p_link_e)}"
+            "afsk" -> "$proto, ${getListItemName(link, AprsBackend.linkDefault(link), R.array.p_afsk_ev, R.array.p_afsk_e)}"
+            "aprsis" -> "$proto, ${getListItemName(link, AprsBackend.linkDefault(link), R.array.p_aprsis_ev, R.array.p_aprsis_e)}"
+            "link" -> "$proto, ${getListItemName(link, AprsBackend.linkDefault(link), R.array.p_link_ev, R.array.p_link_e)}"
             else -> proto
         }
     }

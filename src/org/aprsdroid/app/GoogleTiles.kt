@@ -37,6 +37,7 @@ object GoogleTiles {
 
     enum class Type(val tag: String) {
         ROADMAP("gtiles_roadmap"),
+        QUIET("gtiles_quiet"),
         SATELLITE("gtiles_satellite"),
         HYBRID("gtiles_hybrid"),
         TERRAIN("gtiles_terrain"),
@@ -78,6 +79,10 @@ object GoogleTiles {
         if (locale.country.isNotEmpty()) o.put("region", locale.country)
         when (type) {
             Type.ROADMAP -> o.put("mapType", "roadmap")
+            Type.QUIET -> {
+                o.put("mapType", "roadmap")
+                o.put("styles", JSONArray(MapStyles.QUIET_JSON))
+            }
             Type.SATELLITE -> o.put("mapType", "satellite")
             Type.HYBRID -> {
                 o.put("mapType", "satellite")
