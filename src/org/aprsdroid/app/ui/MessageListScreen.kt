@@ -82,6 +82,8 @@ fun MessageListScreen(
     myCall: String,
     onBack: () -> Unit,
     onStartService: () -> Unit,
+    /** True when shown inside another screen (a tab): no title bar of its own. */
+    embedded: Boolean = false,
 ) {
     val messages by viewModel.messages.collectAsState()
     val context = LocalContext.current
@@ -99,7 +101,7 @@ fun MessageListScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            if (!embedded) TopAppBar(
                 title = {
                     Text(
                         viewModel.targetCall,

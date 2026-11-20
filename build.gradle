@@ -243,6 +243,9 @@ dependencies {
 
     // Testing
     testImplementation 'junit:junit:4.13.2'
+    // Real implementations for local unit tests (the Android jar only has stubs for these).
+    testImplementation 'org.json:json:20240303'
+    testImplementation 'net.sf.kxml:kxml2:2.3.0'
     androidTestImplementation 'androidx.test:runner:1.6.2'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
     androidTestImplementation composeBom

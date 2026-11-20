@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import org.aprsdroid.app.data.AprsDatabase
 import org.aprsdroid.app.data.PostEntity
 import org.aprsdroid.app.data.StationEntity
@@ -69,6 +70,70 @@ class StationDetailViewModel(
                         ?.let { (it.lat * 1e6).toInt() to (it.lon * 1e6).toInt() },
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    // ---- history: what this device has heard, or more from the user's history server ----
+
+    private val localHistory: kotlinx.coroutines.flow.Flow<org.aprsdroid.app.StationHistory> =
+        kotlinx.coroutines.flow.combine(db.positionDao().getPositionsForCall(targetCall), posts) { positions, posts ->
+            val track = positions.asReversed().map {
+                org.aprsdroid.app.TrackPoint(it.ts, it.lat / 1e6, it.lon / 1e6)
+            }
+            val weather = posts.mapNotNull { p ->
+                org.aprsdroid.app.AprsWeather.fromPacket(p.message)?.let { org.aprsdroid.app.WeatherSample(p.ts, it) }
+            }.sortedBy { it.ts }
+            org.aprsdroid.app.StationHistory(track, weather, "this device")
+        }
+
+    private val serverHistory = kotlinx.coroutines.flow.MutableStateFlow<org.aprsdroid.app.StationHistory?>(null)
+
+    /** Why the history server could not be used, for the user; null when fine or not set up. */
+    val historyError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /** The fuller of the two histories. */
+    val history: StateFlow<org.aprsdroid.app.StationHistory> =
+        kotlinx.coroutines.flow.combine(localHistory, serverHistory) { local, server ->
+            if (server != null && server.track.size + server.weather.size >= local.track.size + local.weather.size) server
+            else local
+        }.stateIn(
+            viewModelScope, SharingStarted.WhileSubscribed(5000),
+            org.aprsdroid.app.StationHistory(emptyList(), emptyList(), "this device"),
+        )
+
+    // ---- QRZ.com ----
+
+    /** null = not set up or still loading. */
+    val qrz = kotlinx.coroutines.flow.MutableStateFlow<org.aprsdroid.app.QrzReply?>(null)
+    val qrzError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val qrzConfigured: Boolean = org.aprsdroid.app.OnlineLookups.hasQrz(app)
+
+    init {
+        val io = kotlinx.coroutines.Dispatchers.IO
+        if (org.aprsdroid.app.OnlineLookups.hasHistoryServer(app)) {
+            viewModelScope.launch(io) {
+                try {
+                    serverHistory.value = org.aprsdroid.app.OnlineLookups.fetchHistory(app, targetCall, HISTORY_HOURS)
+                } catch (e: Exception) {
+                    historyError.value = e.message ?: e.javaClass.simpleName
+                }
+            }
+        }
+        // QRZ knows licensees, not objects or tactical names: only ask for things shaped like a callsign.
+        if (qrzConfigured && CALLSIGN.matches(org.aprsdroid.app.QrzLookup.baseCall(targetCall))) {
+            viewModelScope.launch(io) {
+                try {
+                    qrz.value = org.aprsdroid.app.OnlineLookups.qrz(app, targetCall)
+                } catch (e: Exception) {
+                    qrzError.value = e.message ?: e.javaClass.simpleName
+                }
+            }
+        }
+    }
+
+    companion object {
+        /** How far back to ask the history server: one week. */
+        const val HISTORY_HOURS = 168
+        private val CALLSIGN = Regex("^[A-Z0-9]{1,3}[0-9][A-Z0-9]{0,3}[A-Z]$")
+    }
 
     class Factory(private val app: Application, private val targetCall: String) :
         ViewModelProvider.Factory {

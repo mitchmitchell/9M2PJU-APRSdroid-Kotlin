@@ -34,4 +34,43 @@ internal object StationFormat {
             Math.abs(lat), if (lat >= 0) "N" else "S", Math.abs(lon), if (lon >= 0) "E" else "W",
         )
     }
+
+    /** A length along a track, from metres. */
+    fun trackDistance(metres: Double, metric: Boolean): String =
+        if (metric) "%.1f km".format(metres / 1000.0) else "%.1f mi".format(metres / 1609.344)
+
+    /** A speed from metres per second. */
+    fun speedMps(mps: Double, metric: Boolean): String =
+        if (metric) "%.0f km/h".format(mps * 3.6) else "%.0f mph".format(mps * 2.236936)
+
+    /** "3 h 20 min", "45 min", "2 d 4 h". */
+    fun duration(ms: Long): String {
+        val min = ms / 60_000
+        return when {
+            min < 60 -> "$min min"
+            min < 48 * 60 -> "${min / 60} h ${min % 60} min"
+            else -> "${min / 1440} d ${(min % 1440) / 60} h"
+        }
+    }
+
+    /** What kind of station this is, from its symbol, for a badge. */
+    fun kind(symbol: String?, isObject: Boolean): String {
+        if (symbol == null || symbol.length < 2) return "Station"
+        val primary = symbol[0] == '/'
+        return when {
+            symbol[1] == '_' -> "Weather station"
+            symbol[1] == '#' -> "Digipeater"
+            symbol[1] == '&' -> "Gateway"
+            primary && symbol[1] == 'r' -> "Repeater"
+            primary && symbol[1] == '-' -> "Home station"
+            primary && symbol[1] == 'y' -> "Home station"
+            primary && symbol[1] in "[b" -> "On foot or bike"
+            primary && symbol[1] in "'^Xg" -> "Aircraft"
+            primary && symbol[1] in "sY" -> "Boat"
+            primary && symbol[1] == 'O' -> "Balloon"
+            org.aprsdroid.app.MapFilters.isMobile(symbol, null) -> "Vehicle"
+            isObject -> "Object"
+            else -> "Station"
+        }
+    }
 }

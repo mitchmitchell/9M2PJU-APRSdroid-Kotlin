@@ -288,7 +288,7 @@ class GoogleMapAct : ComponentActivity() {
     private fun clusterIcon(count: Int): BitmapDescriptor = icons.getOrPut("cluster:$count") {
         val density = resources.displayMetrics.density
         val r = CLUSTER_CELL_DP * density * (0.30f + 0.04f * minOf(count.toString().length, 4))
-        val stroke = drawSize / 8f
+        val stroke = drawSize / 16f
         val size = (2 * (r + stroke)).toInt() + 2
         val b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val c = Canvas(b)

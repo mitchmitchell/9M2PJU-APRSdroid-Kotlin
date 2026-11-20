@@ -452,7 +452,7 @@ private fun StationPanel(
                         val facts = listOfNotNull(
                             data?.distance,
                             StationFormat.age(sta.ts),
-                            if (speed != null && speed > 0) StationFormat.speed(speed, metric) else null,
+                            if (speed != null && speed > 0 && sta.symbol?.getOrNull(1) != '_') StationFormat.speed(speed, metric) else null,
                         ).joinToString("  •  ")
                         Text(
                             facts,
@@ -465,7 +465,12 @@ private fun StationPanel(
                     Icon(Icons.Filled.Close, contentDescription = "Close")
                 }
             }
-            val comment = remember(sta?.comment) { AprsComment.clean(sta?.comment) }
+            val comment = remember(sta?.comment) {
+                org.aprsdroid.app.AprsWeather.parse(sta?.comment, sta?.course, sta?.speed)
+                    ?.let { org.aprsdroid.app.WeatherFormat.summary(it, metric) }
+                    ?.takeIf { it.isNotEmpty() }
+                    ?: AprsComment.clean(sta?.comment)
+            }
             if (comment.isNotEmpty()) {
                 Text(
                     comment,

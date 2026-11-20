@@ -282,7 +282,13 @@ private fun StationItem(
                 )
                 // The readable part of the comment only: course, altitude, antenna
                 // and telemetry codes are data, shown elsewhere.
-                val detail = remember(sta.comment) { org.aprsdroid.app.AprsComment.clean(sta.comment) }
+                val detail = remember(sta.comment, metric) {
+                    // Weather stations: what they report, not the coded string.
+                    org.aprsdroid.app.AprsWeather.parse(sta.comment, sta.course, sta.speed)
+                        ?.let { org.aprsdroid.app.WeatherFormat.summary(it, metric) }
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: org.aprsdroid.app.AprsComment.clean(sta.comment)
+                }
                 if (detail.isNotEmpty()) {
                     Text(
                         text = detail,
