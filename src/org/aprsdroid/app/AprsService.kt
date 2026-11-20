@@ -30,6 +30,8 @@ import net.ab0oo.aprs.parser.PositionPacket
 import org.aprsdroid.app.data.AprsDatabase
 import org.aprsdroid.app.data.PostEntity
 import org.aprsdroid.app.data.StationEntity
+import org.aprsdroid.app.export.StationExporter
+import org.aprsdroid.app.export.StationReport
 
 /**
  * Kotlin port of the Scala `AprsService`.
@@ -56,7 +58,10 @@ class AprsService : Service() {
     var msgService: MessageService? = null
     var igateService: IgateService? = null
     var digipeaterService: DigipeaterService? = null
+    /** ATAK / TAK Cursor-on-Target export of received stations. */
+    var exporter: StationExporter? = null
     var singleShot = false
+    @Volatile private var destroyed = false
 
     // ---- lifecycle ----
 
@@ -77,14 +82,22 @@ class AprsService : Service() {
     override fun onUnbind(intent: Intent?): Boolean = false
 
     override fun onDestroy() {
-        running = false
+        setRunning(false)
+        // Nothing queued by backend threads may run on a destroyed service
+        // (a late "connected" callback used to restart GPS and the notification).
+        destroyed = true
+        handler.removeCallbacksAndMessages(null)
         linkError = 0
         poster?.stop()
         locSource?.stop()
         msgService?.stop()
         igateService?.stop()
+        exporter?.stop()
+        exporter = null
         serviceScope.cancel()
         ServiceNotifier.instance.stop(this)
+        // Documented API event (doc/API.mdwn); was missing from the Kotlin port.
+        sendBroadcast(Intent(SERVICE_STOPPED))
         super.onDestroy()
     }
 
@@ -131,6 +144,9 @@ class AprsService : Service() {
             singleShot = !running || singleShot
             if (singleShot) getString(R.string.service_once) else null
         } else {
+            // "Start tracking" after a one-off "Send position" must keep the
+            // service running: without this it stopped itself after the next beacon.
+            singleShot = false
             getString(R.string.service_start)
         }
         if (toastString != null) {
@@ -141,7 +157,7 @@ class AprsService : Service() {
         ServiceNotifier.instance.start(this, callssid)
 
         if (!running) {
-            running = true
+            setRunning(true)
             startPoster()
             // Create the message service for incoming/outgoing APRS messages
             msgService = MessageService(this)
@@ -149,6 +165,12 @@ class AprsService : Service() {
             digipeaterService = DigipeaterService(prefs, TAG) { packet ->
                 sendDigipeatedPacket(packet)
             }
+            // ATAK / TAK export. Always created; it idles unless enabled in
+            // settings, and picks up setting changes while running.
+            exporter = StationExporter(this) { type, msg ->
+                // addPost (not postAddPost): an export error must not stop the service.
+                handler.post { if (!destroyed) addPost(type, "ATAK", msg) }
+            }.also { it.start() }
         } else {
             onPosterStarted()
         }
@@ -174,6 +196,7 @@ class AprsService : Service() {
     }
 
     fun onPosterStarted() {
+        if (destroyed) return
         Log.d(TAG, "onPosterStarted")
         // (Re)start location source, get location source name.
         val locInfo = locSource?.start(singleShot) ?: getString(R.string.p_source_periodic)
@@ -355,7 +378,7 @@ class AprsService : Service() {
                 e.printStackTrace()
                 e.toString()
             }
-            handler.post { sendPacketFinished(status) }
+            handler.post { if (!destroyed) sendPacketFinished(status) }
         }
     }
 
@@ -397,8 +420,10 @@ class AprsService : Service() {
         try {
             var fap = Parser.parse(message)
             val digiPathCheck = fap.digiString
+            var thirdParty = false
 
             if (fap.type == APRSTypes.T_THIRDPARTY) {
+                thirdParty = true
                 Log.d(TAG, "parsePacket: third-party packet from ${fap.sourceCall}")
                 val inner = fap.aprsInformation.toString()
                 fap = Parser.parse(inner.substring(1, inner.length))
@@ -427,8 +452,8 @@ class AprsService : Service() {
                 throw Exception("FAP fault")
             }
             when (val info = fap.aprsInformation) {
-                is PositionPacket -> addPosition(ts, fap, info, info.position, null)
-                is ObjectPacket -> addPosition(ts, fap, info, info.position, info.objectName)
+                is PositionPacket -> addPosition(ts, fap, info, info.position, null, viaInternet(thirdParty))
+                is ObjectPacket -> addPosition(ts, fap, info, info.position, info.objectName, viaInternet(thirdParty))
                 is MessagePacket -> {
                     msgService?.handleMessage(ts, fap, info, digiPathCheck)
                     Log.d(TAG, "received message from ${fap.sourceCall}: ${info.messageBody}")
@@ -441,6 +466,10 @@ class AprsService : Service() {
         }
     }
 
+    /** True when packets arrive from APRS-IS rather than over RF. */
+    private fun viaInternet(thirdParty: Boolean): Boolean =
+        thirdParty || prefs.getProto() == "aprsis"
+
     private fun getCSE(field: InformationField): CourseAndSpeedExtension? {
         return field.extension as? CourseAndSpeedExtension
     }
@@ -451,6 +480,7 @@ class AprsService : Service() {
         field: InformationField,
         pos: Position,
         objectname: String?,
+        viaInternet: Boolean = false,
     ) {
         val cse = getCSE(field)
         serviceScope.launch {
@@ -474,6 +504,7 @@ class AprsService : Service() {
                     lon = lon,
                     speed = cse?.speed,
                     course = cse?.course,
+                    alt = StationReport.altitudeFromComment(comment)?.let { Math.round(it).toInt() },
                     symbol = sym,
                     comment = comment,
                     origin = if (objectname != null) call else null,
@@ -481,15 +512,38 @@ class AprsService : Service() {
                     flags = 0,
                 )
             )
-        }
 
-        sendBroadcast(
-            Intent(POSITION)
-                .putExtra(SOURCE, ap.sourceCall)
-                .putExtra(LOCATION, AprsPacket.position2location(ts, pos, cse))
-                .putExtra(CALLSIGN, objectname ?: ap.sourceCall)
-                .putExtra(PACKET, ap.toString())
-        )
+            val location = AprsPacket.position2location(ts, pos, cse)
+            exporter?.offer(
+                StationReport(
+                    call = name,
+                    origin = if (objectname != null) call else null,
+                    symbol = sym,
+                    lat = pos.latitude,
+                    lon = pos.longitude,
+                    altM = StationReport.altitudeFromComment(comment),
+                    courseDeg = cse?.course,
+                    speedMps = cse?.let { it.speed / 1.94384449 },
+                    ceM = location.accuracy.toDouble(),
+                    comment = comment.ifBlank { null },
+                    qrg = qrg,
+                    ts = ts,
+                    isObject = objectname != null,
+                    isOwn = call.equals(prefs.getCallSsid(), ignoreCase = true),
+                    viaInternet = viaInternet && !call.equals(prefs.getCallSsid(), ignoreCase = true),
+                )
+            )
+
+            // Broadcast only after the database write, so listeners (the map
+            // views) that reload on POSITION always see this station.
+            sendBroadcast(
+                Intent(POSITION)
+                    .putExtra(SOURCE, ap.sourceCall)
+                    .putExtra(LOCATION, location)
+                    .putExtra(CALLSIGN, name)
+                    .putExtra(PACKET, ap.toString())
+            )
+        }
     }
 
     // ---- post / log ----
@@ -520,6 +574,7 @@ class AprsService : Service() {
             return
         }
         handler.post {
+            if (destroyed) return@post
             addPost(type, statusId, message)
             if (type == PostEntity.TYPE_INCMG) {
                 msgService?.sendPendingMessages()
@@ -613,6 +668,14 @@ class AprsService : Service() {
 
         @JvmField
         var running = false
+
+        /** [running] as observable state, for the UI (same process, no broadcast needed). */
+        val runningState = kotlinx.coroutines.flow.MutableStateFlow(false)
+
+        private fun setRunning(value: Boolean) {
+            running = value
+            runningState.value = value
+        }
 
         @JvmField
         var linkError = 0

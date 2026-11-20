@@ -1,7 +1,9 @@
 package org.aprsdroid.app
 
+import org.aprsdroid.app.ui.MapStationLayer
 import org.aprsdroid.app.ui.AprsBottomBar
 import org.aprsdroid.app.ui.AprsOverflowMenu
+import org.aprsdroid.app.ui.MapTypeMenu
 
 import android.app.AlertDialog
 import android.content.Context
@@ -19,6 +21,9 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import android.graphics.Point
 import android.graphics.Rect
 import android.graphics.Typeface
@@ -45,6 +50,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -77,7 +83,14 @@ import org.mapsforge.v3.android.maps.overlay.ItemizedOverlay
 import org.mapsforge.v3.android.maps.overlay.OverlayItem
 import org.mapsforge.v3.core.GeoPoint
 import java.io.File
+import android.os.Handler
+import android.os.Looper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.aprsdroid.app.data.AprsDatabase
 
 /**
@@ -96,7 +109,15 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     private val prefs by lazy { PrefsWrapper(this) }
     private val db by lazy { AprsDatabase.get(this) }
 
-    private var targetcall = ""
+    private var trackedCall by mutableStateOf("")
+    /** Station shown in the slide-up panel ("" = none). */
+    private var selectedCall by mutableStateOf("")
+    private var searchOpen by mutableStateOf(false)
+    /** Bumped on every station reload so the panel refreshes. */
+    private var dataVersion by mutableStateOf(0)
+    private var targetcall: String
+        get() = trackedCall
+        set(v) { trackedCall = v }
     private var showObjects = false
     private val isCoordinateChooser: Boolean by lazy { callingActivity != null }
 
@@ -130,21 +151,51 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     private var coordInfo by mutableStateOf("")
     private var acceptEnabled by mutableStateOf(false)
     private var showObjectsChecked by mutableStateOf(false)
+    private var currentModeTag by mutableStateOf("osm")
+    private var attribution by mutableStateOf<String?>(null)
+
+    private val uiScope = MainScope()
+    private val handler = Handler(Looper.getMainLooper())
+    private val attributionRunnable = Runnable { refreshAttribution() }
+    private var lastAttributionKey = ""
+    /** Mapsforge's own persistence setting, restored when leaving Google tiles. */
+    private var defaultCachePersistent: Boolean? = null
+
+    /** The map type this activity is showing (OSM or a Google tiles type). */
+    private fun currentMode(): MapMode {
+        MapModes.initialize(this)
+        return MapModes.all.firstOrNull { it.tag == currentModeTag && it.viewClass == MapAct::class.java }
+            ?: MapModes.all.first { it.tag == "osm" }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        savedStateRegistryController.performAttach()
         savedStateRegistryController.performRestore(savedInstanceState)
         UIHelper.applySystemBarInsets(this)
 
         targetcall = intent.dataString ?: ""
         showObjects = prefs.getShowObjects()
+        val mode = MapModes.defaultMapMode(this, prefs)
+        // The coordinate chooser always opens here, even when the default
+        // map type is a Google Maps SDK type — fall back to OSM then.
+        currentModeTag = if (mode.viewClass == MapAct::class.java) mode.tag else "osm"
         showObjectsChecked = showObjects
 
         setResult(RESULT_CANCELED)
 
+        // MapActivity is a plain Activity, so nothing registers the lifecycle
+        // owners on the view tree for us. Compose looks them up there
+        // (ViewTreeLifecycleOwner etc.) and crashes if they are missing. Set
+        // them on the decor view so popups and dialogs find them too.
+        window.decorView.let { root ->
+            root.setViewTreeLifecycleOwner(this)
+            root.setViewTreeViewModelStoreOwner(this)
+            root.setViewTreeSavedStateRegistryOwner(this)
+        }
         val composeView = ComposeView(this)
         composeView.setContent {
-            MapScreen()
+            org.aprsdroid.app.ui.theme.AprsTheme { MapScreen() }
         }
         setContentView(composeView)
 
@@ -168,7 +219,8 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         if (mv != null) {
             val pos = mv.mapPosition.mapPosition
             if (pos?.geoPoint != null) {
-                saveMapViewPosition(
+                MapData.saveCamera(
+                    prefs,
                     pos.geoPoint.latitudeE6 / 1000000.0f,
                     pos.geoPoint.longitudeE6 / 1000000.0f,
                     pos.zoomLevel.toFloat(),
@@ -176,6 +228,11 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
             }
         }
         super.onPause()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        savedStateRegistryController.performSave(outState)
     }
 
     override fun onStop() {
@@ -186,6 +243,9 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     override fun onDestroy() {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         _viewModelStore.clear()
+        handler.removeCallbacks(attributionRunnable)
+        uiScope.cancel()
+        locReceiver.cancel()
         try {
             unregisterReceiver(locReceiver)
         } catch (_: Exception) {
@@ -198,42 +258,10 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     private fun MapScreen() {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(if (isCoordinateChooser) getString(R.string.p_source_from_map)
-                             else if (targetcall == "") getString(R.string.app_map)
-                             else "${getString(R.string.app_map)}: $targetcall")
-                    },
-                    actions = {
-                        if (!isCoordinateChooser) {
-                            // Show objects toggle
-                            IconButton(onClick = {
-                                val newState = prefs.toggleBoolean("show_objects", true)
-                                showObjectsChecked = newState
-                                showObjects = newState
-                                reloadMap()
-                            }) {
-                                Icon(
-                                    if (showObjects) Icons.Filled.Visibility
-                                    else Icons.Filled.VisibilityOff,
-                                    contentDescription = "Toggle objects",
-                                )
-                            }
-                            // Shared overflow menu
-                            AprsOverflowMenu(
-                                showAgeFilter = true,
-                                onPreferences = { AprsNavigation.openPreferences(this@MapAct) },
-                                onAgeChanged = { reloadMap() },
-                            )
-                        }
-                    },
-                )
-            },
-            floatingActionButton = {
-                if (!isCoordinateChooser) {
-                    FloatingActionButton(onClick = { centerOnMyLocation() }) {
-                        Icon(Icons.Filled.MyLocation, contentDescription = "My Location")
-                    }
+                // Only the position picker has a title bar; the normal map is
+                // map-first and its controls float on the map.
+                if (isCoordinateChooser) {
+                    TopAppBar(title = { Text(getString(R.string.p_source_from_map)) })
                 }
             },
             bottomBar = {
@@ -255,6 +283,12 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                 AndroidView(
                     factory = { ctx ->
                         MapView(ctx).also { mv ->
+                            // Mapsforge only handles touch gestures (drag, pinch
+                            // zoom, double-tap) on a clickable view. The old XML
+                            // layout set these; a view created in code must too.
+                            mv.isClickable = true
+                            mv.isFocusable = true
+                            mv.isFocusableInTouchMode = true
                             mv.setBuiltInZoomControls(true)
                             mv.overlays.add(staoverlay)
                             mv.setTextScale(resources.displayMetrics.density)
@@ -269,6 +303,66 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                     modifier = Modifier.fillMaxSize(),
                 )
 
+                if (!isCoordinateChooser) {
+                    if (targetcall.isNotEmpty() && !searchOpen) {
+                        org.aprsdroid.app.ui.TrackingChip(
+                            call = targetcall,
+                            onStop = { targetcall = "" ; trackedCall = "" ; reloadMap() },
+                            modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                        )
+                    }
+                    org.aprsdroid.app.ui.MapControlStack(
+                        modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+                    ) {
+                        IconButton(onClick = { searchOpen = !searchOpen }) {
+                            Icon(Icons.Filled.Search, contentDescription = "Find a callsign")
+                        }
+                        MapTypeMenu(currentTag = currentModeTag) { mode ->
+                            if (!MapModes.switchTo(this@MapAct, prefs, mode, targetcall)) {
+                                currentModeTag = mode.tag
+                                reloadMapAndTheme()
+                            }
+                        }
+                        IconButton(onClick = {
+                            val newState = prefs.toggleBoolean("show_objects", true)
+                            showObjectsChecked = newState
+                            showObjects = newState
+                            reloadMap()
+                        }) {
+                            Icon(
+                                if (showObjectsChecked) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = if (showObjectsChecked) "Hide objects" else "Show objects",
+                            )
+                        }
+                        IconButton(onClick = { centerOnMyLocation() }) {
+                            Icon(Icons.Filled.MyLocation, contentDescription = "Go to my location")
+                        }
+                        AprsOverflowMenu(
+                            showAgeFilter = true,
+                            onPreferences = { AprsNavigation.openPreferences(this@MapAct) },
+                            onAgeChanged = { reloadMap() },
+                        )
+                    }
+                    MapStationLayer(
+                        selectedCall = selectedCall,
+                        followedCall = trackedCall,
+                        searchOpen = searchOpen,
+                        refreshKey = dataVersion,
+                        onSearchClose = { searchOpen = false },
+                        onFound = { sta ->
+                            searchOpen = false
+                            selectedCall = sta.call
+                            mapview?.let { mv ->
+                                mv.controller.setCenter(GeoPoint(sta.lat, sta.lon))
+                                if (mv.mapPosition.zoomLevel < 12) mv.controller.setZoom(12)
+                            }
+                        },
+                        onDismiss = { selectedCall = "" },
+                        onFollow = { call -> targetcall = call; reloadMap() },
+                        onStopFollowing = { targetcall = ""; reloadMap() },
+                    )
+                }
+
                 // Loading indicator
                 if (isLoading) {
                     Box(
@@ -279,15 +373,23 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                     }
                 }
 
+                // Google Map Tiles attribution (required by Google's terms)
+                attribution?.let { text ->
+                    Text(
+                        text = "Google  $text",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.Black,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .background(Color(0xB3FFFFFF))
+                            .padding(horizontal = 4.dp, vertical = 2.dp),
+                    )
+                }
+
                 // Coordinate chooser overlay
                 if (isCoordinateChooser) {
                     // Crosshair
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .background(Color.Transparent)
-                            .align(Alignment.Center),
-                    )
+                    org.aprsdroid.app.ui.MapCrosshair(Modifier.align(Alignment.Center))
                     // Info text
                     Column(
                         modifier = Modifier
@@ -296,11 +398,20 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                             .align(Alignment.TopCenter),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Text(
-                            text = coordInfo,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
+                        if (coordInfo.isNotEmpty()) {
+                            androidx.compose.material3.Surface(
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainer,
+                                shadowElevation = 6.dp,
+                            ) {
+                                Text(
+                                    text = coordInfo,
+                                    style = org.aprsdroid.app.ui.theme.PacketStyle,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                )
+                            }
+                        }
                     }
                     // Accept button
                     AcceptButton(
@@ -377,52 +488,10 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         super.onConfigurationChanged(c)
     }
 
-    private fun saveMapViewPosition(lat: Float, lon: Float, zoom: Float) {
-        prefs.prefs.edit()
-            .putFloat("map_lat", lat)
-            .putFloat("map_lon", lon)
-            .putFloat("map_zoom", zoom)
-            .commit()
-    }
-
     private fun loadMapViewPosition() {
         val mv = mapview ?: return
-        val defaultLat = 52.5075f
-        val defaultLon = 13.39027f
-        val savedLat = prefs.prefs.getFloat("map_lat", Float.NaN)
-        val savedLon = prefs.prefs.getFloat("map_lon", Float.NaN)
-        var lat: Float = defaultLat
-        var lon: Float = defaultLon
-        if (!savedLat.isNaN() && !savedLon.isNaN()) {
-            lat = savedLat
-            lon = savedLon
-        } else {
-            try {
-                val locMan = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-                val provider = PeriodicGPS.bestProvider(locMan)
-                if (provider != null) {
-                    val loc = locMan.getLastKnownLocation(provider)
-                    if (loc != null) {
-                        lat = loc.latitude.toFloat()
-                        lon = loc.longitude.toFloat()
-                    } else {
-                        lat = defaultLat
-                        lon = defaultLon
-                    }
-                } else {
-                    lat = defaultLat
-                    lon = defaultLon
-                }
-            } catch (_: SecurityException) {
-                lat = defaultLat
-                lon = defaultLon
-            } catch (_: Throwable) {
-                lat = defaultLat
-                lon = defaultLon
-            }
-        }
-        val zoom = prefs.prefs.getFloat("map_zoom", 14.0f)
-        mv.controller.setCenter(GeoPoint(lat.toDouble(), lon.toDouble()))
+        val (pos, zoom) = MapData.loadCamera(this, prefs)
+        mv.controller.setCenter(GeoPoint(pos.lat, pos.lon))
         mv.controller.setZoom(zoom.toInt())
     }
 
@@ -456,8 +525,10 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         if (themefile.exists()) {
             try {
                 mv.setRenderTheme(themefile)
-            } catch (_: java.io.FileNotFoundException) {
-                // ignore
+            } catch (e: Exception) {
+                // FileNotFoundException, or UnsupportedOperationException when an
+                // online tile source is active (render themes only apply to .map files).
+                Log.d(tag, "render theme not applied: $e")
             }
         }
         loadMapViewPosition()
@@ -465,19 +536,143 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
 
     private fun loadOnlineMap() {
         val mv = mapview ?: return
+        if (mv.mapFile != null) return
+        val mode = currentMode()
+        if (mode is GoogleTilesMode) {
+            loadGoogleTiles(mode)
+            return
+        }
+        attribution = null
         try {
-            if (mv.mapFile == null) {
-                val mapGen = OsmTileDownloader.create(this)
-                mapGen.setUserAgent(getString(R.string.build_version))
-                mv.setMapGenerator(mapGen)
+            val mapGen = OsmTileDownloader.create(this)
+            mapGen.setUserAgent(getString(R.string.build_version))
+            mv.setMapGenerator(mapGen)
+        } catch (e: Exception) {
+            Log.e(tag, "could not set the OSM tile source", e)
+            return
+        }
+        applyCacheSettings(mv, mode, persistent = null)
+    }
+
+    /** Create/refresh the Google session off the main thread, then switch the tile source. */
+    private fun loadGoogleTiles(mode: GoogleTilesMode) {
+        uiScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    Result.success(GoogleTiles.session(this@MapAct, mode.tileType))
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
             }
-        } catch (_: UnsupportedOperationException) {
-            // ignore
+            val mv = mapview ?: return@launch
+            result.onSuccess { session ->
+                val gen = GoogleTileDownloader(session.token, GoogleTiles.apiKey(this@MapAct))
+                gen.setUserAgent(getString(R.string.build_version))
+                try {
+                    mv.setMapGenerator(gen)
+                } catch (e: Exception) {
+                    Log.e(tag, "could not set the Google tile source", e)
+                    return@onSuccess
+                }
+                // Google's terms limit storing tiles: keep them out of the persistent cache.
+                applyCacheSettings(mv, mode, persistent = false)
+                lastAttributionKey = ""
+                scheduleAttribution()
+            }.onFailure { e ->
+                Log.w(tag, "Google tiles unavailable", e)
+                Toast.makeText(
+                    this@MapAct,
+                    getString(R.string.map_gtiles_error, e.message ?: e.toString()),
+                    Toast.LENGTH_LONG,
+                ).show()
+                currentModeTag = "osm"
+                loadOnlineMap()
+            }
+        }
+    }
+
+    /**
+     * Keep each tile source's cached tiles apart.
+     *
+     * Mapsforge 0.3 keys cached tiles by host name plus the "job
+     * parameters" (render theme + text scale), every Google map type shares
+     * one host, and its caches cannot be flushed (setCapacity throws
+     * UnsupportedOperationException on the in-memory cache). Downloaded
+     * tiles ignore the text scale, so give each source its own slightly
+     * different value: that changes the cache key without changing how
+     * anything is drawn. OSM keeps the plain density so its existing cache
+     * stays valid.
+     */
+    private fun separateTileCache(mv: MapView, mode: MapMode) {
+        val slot = if (mode is GoogleTilesMode) mode.tileType.ordinal + 1 else 0
+        mv.setTextScale(resources.displayMetrics.density + slot * 0.001f)
+    }
+
+    /**
+     * Cache housekeeping after the tile source is set. Best effort: a
+     * failure here must never stop the map from showing.
+     * @param persistent null restores Mapsforge's own setting.
+     */
+    private fun applyCacheSettings(mv: MapView, mode: MapMode, persistent: Boolean?) {
+        try {
+            separateTileCache(mv, mode)
+        } catch (e: Exception) {
+            Log.w(tag, "could not separate tile cache", e)
+        }
+        try {
+            val cache = mv.fileSystemTileCache
+            if (defaultCachePersistent == null) defaultCachePersistent = cache.isPersistent
+            val want = persistent ?: defaultCachePersistent ?: return
+            if (cache.isPersistent != want) cache.setPersistent(want)
+        } catch (e: Exception) {
+            Log.w(tag, "could not change tile cache persistence", e)
+        }
+    }
+
+    /** The followed callsign, for the overlay (drawn first and highlighted). */
+    fun trackedCallForOverlay(): String = trackedCall
+
+    /** Called from the overlay on every redraw; debounces attribution lookups. */
+    fun onMapRedrawn() {
+        if (currentMode() !is GoogleTilesMode) return
+        scheduleAttribution()
+    }
+
+    private fun scheduleAttribution() {
+        handler.removeCallbacks(attributionRunnable)
+        handler.postDelayed(attributionRunnable, 1500)
+    }
+
+    private fun refreshAttribution() {
+        val mode = currentMode() as? GoogleTilesMode ?: run { attribution = null; return }
+        val mv = mapview ?: return
+        val proj = mv.projection ?: return
+        if (mv.width == 0 || mv.height == 0) return
+        val nw = proj.fromPixels(0, 0) ?: return
+        val se = proj.fromPixels(mv.width, mv.height) ?: return
+        val zoom = mv.mapPosition.zoomLevel.toInt()
+        val key = "${mode.tag}/$zoom/${nw.latitudeE6 / 10000}/${nw.longitudeE6 / 10000}"
+        if (key == lastAttributionKey) return
+        lastAttributionKey = key
+        uiScope.launch {
+            val text = withContext(Dispatchers.IO) {
+                GoogleTiles.attribution(
+                    this@MapAct, mode.tileType, zoom,
+                    nw.latitude, se.latitude, se.longitude, nw.longitude,
+                )
+            }
+            if (currentMode() == mode) attribution = text ?: attribution
         }
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
+            // Back closes search or the station panel before leaving the map.
+            KeyEvent.KEYCODE_BACK -> if (searchOpen || selectedCall.isNotEmpty()) {
+                searchOpen = false
+                selectedCall = ""
+                return true
+            }
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
             KeyEvent.KEYCODE_MEDIA_NEXT -> {
                 changeZoom(+1)
@@ -541,7 +736,8 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                 val sta = runBlocking { db.stationDao().getStaPosition(targetcall) }
                 if (sta != null) {
                     runOnUiThread {
-                        mapview?.controller?.setCenter(GeoPoint(sta.lat.toDouble(), sta.lon.toDouble()))
+                        // lat/lon are stored as microdegrees: use the (Int, Int) E6 constructor.
+                        mapview?.controller?.setCenter(GeoPoint(sta.lat, sta.lon))
                     }
                 }
             }.start()
@@ -549,13 +745,18 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     }
 
     internal fun onPostLoad() {
+        dataVersion++
         mapview?.invalidate()
         onStopLoading()
         animateToCall()
     }
 
     private fun startLoading() {
-        UIHelper.safeRegisterReceiver(this, locReceiver, IntentFilter(AprsService.UPDATE))
+        val filter = IntentFilter(AprsService.UPDATE)
+        // POSITION is sent after the station is written to the database, so a
+        // reload triggered by it always sees the newest position.
+        filter.addAction(AprsService.POSITION)
+        UIHelper.safeRegisterReceiver(this, locReceiver, filter)
         locReceiver.startTask(null)
     }
 
@@ -572,23 +773,23 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         isLoading = false
     }
 
+    /** A station was tapped: show it in the slide-up panel, keeping the map in view. */
     fun openDetails(call: String) {
-        startActivity(Intent(this, StationActivity::class.java).setData(android.net.Uri.parse(call)))
+        runOnUiThread {
+            searchOpen = false
+            selectedCall = call
+        }
     }
 
     /**
-     * Load stations from Room for the map overlay.
+     * Load stations for the map overlay via the shared [MapData] loader.
      */
     private fun loadStations(): ArrayList<OSMStation> {
         val stations = ArrayList<OSMStation>()
-        val ageTs = System.currentTimeMillis() - prefs.getShowAge()
-        val allStations = runBlocking {
-            db.stationDao().neighborsRaw(prefs.getCallSsid(), ageTs)
-        }
-        for (sta in allStations) {
-            val symbol = sta.symbol ?: "/$"
-            val p = GeoPoint(sta.lat, sta.lon)
-            stations.add(OSMStation(ArrayList(), p, sta.call, sta.origin ?: "", symbol))
+        for (sta in MapData.loadStations(this, prefs, targetcall, showObjects)) {
+            val movelog = ArrayList<GeoPoint>(sta.trace.size)
+            for (p in sta.trace) movelog.add(GeoPoint(p.lat, p.lon))
+            stations.add(OSMStation(movelog, GeoPoint(sta.pos.lat, sta.pos.lon), sta.call, sta.origin ?: "", sta.symbol))
         }
         Log.d(tag, "total ${stations.size} items")
         return stations
@@ -700,44 +901,85 @@ class StationOverlay(
         val mv = context.mapview ?: return
         if (!mv.mapPosition.isValid) return
         Log.d(tag, "draw: symbolSize=$symbolSize drawSize=$drawSize")
-        val fontSize = drawSize * 7 / 8
+        // Labels: navy text on a light pill, readable on any map. Smaller than
+        // the icon so they do not dominate, and dropped where they would cover
+        // another label or icon, so a busy area stays legible. Zoom in to see more.
+        val fontSize = drawSize * 0.58f
         val textPaint = Paint().apply {
-            color = 0xff000000.toInt()
+            color = 0xff0d182d.toInt()
             textAlign = Paint.Align.CENTER
-            textSize = fontSize.toFloat()
-            typeface = Typeface.MONOSPACE
+            textSize = fontSize
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             isAntiAlias = true
         }
-        val strokePaint = Paint(textPaint).apply {
-            color = 0xffc8ffc8.toInt()
-            style = Paint.Style.STROKE
-            strokeWidth = drawSize / 12.0f
-            setShadowLayer(10f, 0f, 0f, 0x80c8ffc8.toInt())
+        val pillPaint = Paint().apply {
+            color = 0xe6ffffff.toInt()
+            isAntiAlias = true
         }
+        val trackedPillPaint = Paint(pillPaint).apply { color = 0xffebcf3a.toInt() }
 
         val p = Point()
         val width = c.width
         val height = c.height
         val ss = drawSize / 2
+        val showDetail = zoom.toInt() >= 10
+        val tracked = context.trackedCallForOverlay()
 
+        // Visible stations, the followed one first so it always gets its label.
+        class Visible(val s: OSMStation, val x: Int, val y: Int)
+        val visible = ArrayList<Visible>()
         for (s in stations) {
             proj.toPixels(s.getPoint(), p)
-            if (p.x >= 0 && p.y >= 0 && p.x < width && p.y < height) {
-                val srcRect = symbol2rect(s.symbol)
-                val destRect = Rect(p.x - ss, p.y - ss, p.x + ss, p.y + ss)
-                if (zoom.toInt() >= 10) {
-                    drawTrace(c, proj, s)
-                    c.drawText(s.call, p.x.toFloat(), (p.y + ss + fontSize).toFloat(), strokePaint)
-                    c.drawText(s.call, p.x.toFloat(), (p.y + ss + fontSize).toFloat(), textPaint)
+            if (p.x >= -ss && p.y >= -ss && p.x < width + ss && p.y < height + ss) {
+                visible.add(Visible(s, p.x, p.y))
+            }
+        }
+        visible.sortByDescending { it.s.call == tracked }
+
+        // 1. traces underneath everything
+        if (showDetail) for (v in visible) drawTrace(c, proj, v.s)
+
+        // 2. icons
+        val taken = ArrayList<Rect>(visible.size * 2)
+        for (v in visible) {
+            val destRect = Rect(v.x - ss, v.y - ss, v.x + ss, v.y + ss)
+            c.drawBitmap(iconbitmap, symbol2rect(v.s.symbol), destRect, null)
+            if (symbolIsOverlayed(v.s.symbol)) {
+                c.drawBitmap(iconbitmap, symbol2rect(v.s.symbol[0].code - 33, 2), destRect, null)
+            }
+            // Icons block labels with a slightly smaller box, so neighbours can still be named.
+            taken.add(Rect(v.x - ss * 3 / 4, v.y - ss * 3 / 4, v.x + ss * 3 / 4, v.y + ss * 3 / 4))
+        }
+
+        // 3. labels, skipping any that would collide
+        if (showDetail) {
+            val padX = fontSize * 0.35f
+            val padY = fontSize * 0.18f
+            val fm = textPaint.fontMetrics
+            val textH = fm.descent - fm.ascent
+            for ((i, v) in visible.withIndex()) {
+                val w = textPaint.measureText(v.s.call)
+                val left = v.x - w / 2 - padX
+                val top = v.y + ss + 2f
+                val box = android.graphics.RectF(left, top, left + w + 2 * padX, top + textH + 2 * padY)
+                val boxI = Rect(box.left.toInt(), box.top.toInt(), box.right.toInt(), box.bottom.toInt())
+                val isTracked = v.s.call == tracked
+                var free = true
+                if (!isTracked) {
+                    for ((j, r) in taken.withIndex()) {
+                        if (j == i) continue // own icon
+                        if (Rect.intersects(r, boxI)) { free = false; break }
+                    }
                 }
-                c.drawBitmap(iconbitmap, srcRect, destRect, null)
-                if (symbolIsOverlayed(s.symbol)) {
-                    c.drawBitmap(iconbitmap, symbol2rect(s.symbol[0].code - 33, 2), destRect, null)
-                }
+                if (!free) continue
+                taken.add(boxI)
+                c.drawRoundRect(box, textH / 2, textH / 2, if (isTracked) trackedPillPaint else pillPaint)
+                c.drawText(v.s.call, v.x.toFloat(), top + padY - fm.ascent, textPaint)
             }
         }
         context.runOnUiThread {
             context.updateCoordinateInfoFromMap()
+            context.onMapRedrawn()
         }
     }
 

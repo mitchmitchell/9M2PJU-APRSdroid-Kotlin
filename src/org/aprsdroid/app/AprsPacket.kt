@@ -312,6 +312,15 @@ object AprsPacket {
         }
     }
 
+    private val PASSCODE_RE = Regex("(\\buser\\s+\\S+\\s+pass\\s+)(\\S+)")
+
+    /**
+     * Hide the APRS-IS passcode in a login line before it is logged, shown
+     * or exported: "user N0CALL pass 12345 vers ..." -> "... pass ***** ...".
+     */
+    @JvmStatic
+    fun maskPasscode(line: String): String = PASSCODE_RE.replace(line) { it.groupValues[1] + "*****" }
+
     @JvmStatic
     fun formatLogin(callsign: String, ssid: String, passcode: String, version: String): String {
         return "user %s pass %s vers %s".format(formatCallSsid(callsign, ssid), passcode, version)

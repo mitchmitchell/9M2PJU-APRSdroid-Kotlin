@@ -19,7 +19,8 @@ import org.aprsdroid.app.ui.theme.AprsTheme
 class StationActivity : ComponentActivity() {
 
     private val targetCall: String by lazy {
-        intent.getStringExtra("call") ?: ""
+        // Callers pass the callsign either as an extra or as the intent's data.
+        intent.getStringExtra("call") ?: intent.dataString ?: ""
     }
 
     private val viewModel: StationDetailViewModel by viewModels {

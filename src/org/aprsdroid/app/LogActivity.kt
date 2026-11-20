@@ -22,35 +22,18 @@ class LogActivity : ComponentActivity() {
 
     private val viewModel: PostListViewModel by viewModels()
     private val prefs by lazy { PrefsWrapper(this) }
-
-    private var pendingAction = 0
-
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { results ->
-        val allGranted = results.values.all { it }
-        if (allGranted) {
-            when (pendingAction) {
-                START_SERVICE -> startService(AprsService.intent(this, AprsService.SERVICE))
-                START_SERVICE_ONCE -> startService(AprsService.intent(this, AprsService.SERVICE_ONCE))
-            }
-        }
-    }
+    private val service = org.aprsdroid.app.ui.ServiceController(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         UIHelper.applySystemBarInsets(this)
-
         setContent {
             AprsTheme {
                 PostListScreen(
                     viewModel = viewModel,
-                    isServiceRunning = AprsService.running,
-                    onStartService = { startAprsService(START_SERVICE) },
-                    onStopService = { stopAprsService() },
-                    onSingleShot = { startAprsService(START_SERVICE_ONCE) },
                     onNavigate = { target -> AprsNavigation.navigateTo(this, target, prefs) },
                     onPreferences = { AprsNavigation.openPreferences(this) },
+                    service = service,
                 )
             }
         }
@@ -58,54 +41,7 @@ class LogActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        prefs.prefs.edit().putString("activity", "log").commit()
-    }
-
-    private fun startAprsService(action: Int) {
-        pendingAction = action
-        try {
-            val permsSet = mutableSetOf<String>()
-            permsSet.addAll(AprsBackend.defaultBackendPermissions(prefs))
-            permsSet.addAll(LocationSources.getPermissions(prefs))
-            val perms = permsSet.toTypedArray()
-            if (perms.isEmpty()) {
-                doStartService(action)
-            } else {
-                val needed = perms.filter {
-                    checkSelfPermission(it) != android.content.pm.PackageManager.PERMISSION_GRANTED
-                }
-                if (needed.isEmpty()) {
-                    doStartService(action)
-                } else {
-                    permissionLauncher.launch(needed.toTypedArray())
-                }
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("APRSdroid.Log", "Failed to start service", e)
-            Toast.makeText(this, "Could not start service: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun doStartService(action: Int) {
-        when (action) {
-            START_SERVICE -> startService(AprsService.intent(this, AprsService.SERVICE))
-            START_SERVICE_ONCE -> startService(AprsService.intent(this, AprsService.SERVICE_ONCE))
-        }
-    }
-
-    private fun stopAprsService() {
-        try {
-            prefs.prefs.edit().putBoolean("service_running", false).commit()
-            stopService(AprsService.intent(this, AprsService.SERVICE))
-        } catch (e: Exception) {
-            android.util.Log.e("APRSdroid.Log", "Failed to stop service", e)
-            Toast.makeText(this, "Could not stop service: ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    companion object {
-        const val START_SERVICE = 1001
-        const val START_SERVICE_ONCE = 1002
+        prefs.prefs.edit().putString("activity", "log").apply()
     }
 }
 

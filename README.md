@@ -1,35 +1,23 @@
-# APRSdroid 9M2PJU Mod
-### *Enhanced APRS client for Android*
+# APRSDroid-TAK
+### *APRS client for Android with a TAK link*
 
-> **APRSdroid 9M2PJU Mod** is a fork of [NA7Q's enhanced APRSdroid](https://github.com/na7q/aprsdroid),
-> which is itself a fork of [Georg Lukas's original APRSdroid](https://aprsdroid.org/).
-> It adds modern Android compatibility, a Material Design UI, bottom navigation,
-> branded splash screen, in-app updates, GitHub Actions CI/CD with signed release
-> builds, and a project landing page at <https://aprsdroid.hamradio.my/>.
+> **APRSDroid-TAK** is an APRS client for Android that also sends the stations
+> it hears to ATAK on the same device and to a TAK Server, with proper APRS
+> icons. It adds Google Maps and a redesigned interface. It builds on
+> [9M2PJU's Kotlin rewrite](https://github.com/9M2PJU/APRSdroid-9M2PJU-Mod),
+> [NA7Q's enhanced APRSdroid](https://github.com/na7q/aprsdroid) and
+> [Georg Lukas's original APRSdroid](https://aprsdroid.org/).
 
----
-
-<div align="center">
-
-[![Android](https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://aprsdroid.hamradio.my/)
-[![License](https://img.shields.io/badge/License-GPLv2-blue?style=for-the-badge)](https://www.gnu.org/licenses/gpl-2.0.html)
-[![Scala](https://img.shields.io/badge/Built_with-Scala-DC322F?style=for-the-badge&logo=scala&logoColor=white)](https://www.scala-lang.org/)
-[![targetSdk 35](https://img.shields.io/badge/targetSdk-35_(Android_15)-CEB619?style=for-the-badge)](https://developer.android.com/about/versions/15)
-[![Build](https://img.shields.io/github/actions/workflow/status/9M2PJU/APRSdroid-9M2PJU-Mod/build.yml?style=for-the-badge&label=CI)](https://github.com/9M2PJU/APRSdroid-9M2PJU-Mod/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/9M2PJU/APRSdroid-9M2PJU-Mod?style=for-the-badge&label=Latest%20Release)](https://github.com/9M2PJU/APRSdroid-9M2PJU-Mod/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/9M2PJU/APRSdroid-9M2PJU-Mod/total?style=for-the-badge&label=Total%20Downloads)](https://aprsdroid.hamradio.my/)
-
-**[Landing Page](https://aprsdroid.hamradio.my/)** | **[Download](https://github.com/9M2PJU/APRSdroid-9M2PJU-Mod/releases/latest)** | **[Original APRSdroid](https://aprsdroid.org/)** | **[NA7Q Fork](https://github.com/na7q/aprsdroid)** | **[Source](https://github.com/9M2PJU/APRSdroid-9M2PJU-Mod)**
-
-</div>
+**[Maps and ATAK setup](doc/MAPS-AND-ATAK.md)** | **[Original APRSdroid](https://aprsdroid.org/)** | **[NA7Q Fork](https://github.com/na7q/aprsdroid)** | **[Source](https://github.com/mitchmitchell/APRSDroid-TAK)**
 
 ---
 
 ## About
 
-**APRSdroid 9M2PJU Mod** is an Android client for the
+**APRSDroid-TAK** is an Android client for the
 [APRS (Automatic Packet Reporting System)](http://aprs.org/) network.
-It is a fork of [NA7Q's enhanced APRSdroid](https://github.com/na7q/aprsdroid),
+It is a fork of the APRSdroid 9M2PJU Mod, which is a fork of
+[NA7Q's enhanced APRSdroid](https://github.com/na7q/aprsdroid),
 which is itself a fork of [Georg Lukas's original APRSdroid](https://aprsdroid.org/).
 
 ### The APRSdroid family tree
@@ -38,11 +26,24 @@ which is itself a fork of [Georg Lukas's original APRSdroid](https://aprsdroid.o
 |---|---|---|
 | [APRSdroid](https://aprsdroid.org/) | Georg Lukas (ge0rg) | The original APRS client for Android, since 2010. Scala + Java, GPLv2. |
 | [NA7Q's fork](https://github.com/na7q/aprsdroid) | NA7Q | Enhanced fork with BLE TNC, digipeater, IGate, Mic-E, offline maps. [Homepage](https://na7q.com/aprsdroid-osm/) |
-| **APRSdroid 9M2PJU Mod** (this repo) | 9M2PJU | Builds on NA7Q's fork with modern Android, Material UI, CI/CD, in-app updates. |
+| [APRSdroid 9M2PJU Mod](https://github.com/9M2PJU/APRSdroid-9M2PJU-Mod) | 9M2PJU | Builds on NA7Q's fork with modern Android, Material UI, in-app updates, and a Kotlin and Jetpack Compose rewrite. |
+| **APRSDroid-TAK** (this repo) | AE5HO | Adds ATAK and TAK Server export, Google Maps, and a redesigned interface. |
 
-This mod is maintained by **9M2PJU** (Kuala Lumpur, Malaysia) and focuses on
-modern Android compatibility, UI/UX polish, and project infrastructure.
-The direct upstream is [NA7Q's fork](https://github.com/na7q/aprsdroid).
+### What APRSDroid-TAK adds
+
+- **Stations to ATAK**: every station heard is sent as Cursor on Target to
+  ATAK on the same device (UDP) and, optionally, to a TAK Server over TLS
+  with a client certificate
+- **APRS icons in TAK**: a built-in iconset you can share to ATAK, so
+  stations show with their APRS symbols in their own "APRS" group
+- **Google Maps**: the Maps SDK with a build-time key, or Google map tiles
+  with a key you enter in Settings. No key is stored in the source
+- **Redesigned interface**: map-first layout, day and night themes, a
+  transmit strip for sending position and tracking, clearer station list,
+  station details and log
+- **Passcode masked** in the log and in exported logs
+
+Setup is described in [doc/MAPS-AND-ATAK.md](doc/MAPS-AND-ATAK.md).
 
 ### What 9M2PJU added on top of NA7Q's fork
 
@@ -60,8 +61,6 @@ The direct upstream is [NA7Q's fork](https://github.com/na7q/aprsdroid).
   GitHub Releases, with Cloudflare CDN fallback when GitHub API is unreachable
 - **GitHub Actions CI/CD** — signed release APK builds, automatic GitHub
   Releases on `v*` tags, auto-generated `version.json` for the update checker
-- **GitHub Pages landing page** at <https://aprsdroid.hamradio.my/> with
-  live download counters, responsive design for desktop and mobile browsers
 - **New app icon and logo** across all density buckets
 - **Map auto-zooms to GPS location** — on first open, the map centers on
   the user's last known GPS position instead of a hardcoded default
@@ -102,34 +101,16 @@ The direct upstream is [NA7Q's fork](https://github.com/na7q/aprsdroid).
 
 ---
 
-## Screenshots
-
-<div align="center">
-
-| Splash | Log | Hub |
-|:---:|:---:|:---:|
-| ![Splash](docs/assets/splash-user.jpg) | ![Log](docs/assets/screenshots/screenshot-log.png) | ![Hub](docs/assets/screenshots/screenshot-hub.png) |
-
-| Map | Messages | Preferences |
-|:---:|:---:|:---:|
-| ![Map](docs/assets/screenshots/screenshot-map.png) | ![Messages](docs/assets/screenshots/screenshot-messages.png) | ![Preferences](docs/assets/screenshots/screenshot-prefs.png) |
-
-</div>
-
----
-
 ## Quick Start
 
 ### Installation
 
-> **Important:** Uninstall any previous official version of APRSdroid before
-> installing this mod — the signing key differs, so Android will refuse an
-> in-place upgrade.
+> **Important:** Uninstall the official APRSdroid or any other fork before
+> installing. They share a package name but are signed with different keys,
+> so Android will refuse an in-place upgrade.
 
-1. Download the latest signed release APK from the
-   [Releases page](https://github.com/9M2PJU/APRSdroid-9M2PJU-Mod/releases/latest)
-   (or browse all releases on the
-   [landing page](https://aprsdroid.hamradio.my/))
+1. Build the APK from source (see [doc/MAPS-AND-ATAK.md](doc/MAPS-AND-ATAK.md)
+   for the signing and Maps key settings). There are no public releases yet.
 2. Install the APK on your Android device (enable "Install from unknown
    sources" if prompted)
 3. On Android 11+, grant *All files access* for offline MBTiles maps
@@ -148,22 +129,6 @@ GPS location on first open. To use offline maps:
 5. (Optional) Toggle **"Enable Hardware Acceleration"** for smoother
    map rendering (on by default)
 6. Open **Map** — offline tiles will load without internet
-
-#### Malaysia, Singapore & Brunei offline map
-
-A ready-to-use offline map for Malaysia, Singapore, and Brunei is
-available as a GitHub release asset:
-
-> [**Download Malaysia Offline Maps**](https://github.com/9M2PJU/APRSdroid-9M2PJU-Mod/releases/tag/maps-v1.0)
-> (528 MB zip, contains MapsForge `.map` + MBTiles files)
-
-**Installation:**
-1. Download and extract the zip file on your computer
-2. Copy `malaysia-singapore-brunei.map` to your phone (any folder)
-3. In APRSdroid: **Menu** → **Preferences** → **OSM Maps** → **Select MapsforgeV3 or .mbtiles map**
-4. Select the `.map` file you copied
-5. Enable **"Enable offline mapping"**
-6. Open **Map** — the offline map loads without internet
 
 #### Other map sources
 
@@ -191,7 +156,7 @@ over LoRa radio without a phone data connection.
 - A LoRa APRS tracker board with BLE KISS TNC firmware (e.g.
   [richonguzman's LoRa APRS Tracker](https://github.com/richonguzman/LoRa_APRS_Tracker))
 - Android phone with Bluetooth
-- APRSdroid 9M2PJU Mod installed
+- APRSDroid-TAK installed
 
 #### Setup steps
 
@@ -233,8 +198,7 @@ GPS → Phone → APRSdroid → BLE → LoRa Tracker → LoRa Radio → APRS Net
 
 ## Documentation & Support
 
-- [Landing Page](https://aprsdroid.hamradio.my/)
-- [Releases & download counters](https://aprsdroid.hamradio.my/#download)
+- [Maps and ATAK setup](doc/MAPS-AND-ATAK.md)
 - [Original APRSdroid FAQ](https://github.com/ge0rg/aprsdroid/wiki/Frequently-Asked-Questions)
 - [Original APRSdroid Configuration Guide](https://github.com/ge0rg/aprsdroid/wiki/Settings)
 - [NA7Q's Homepage](https://na7q.com/aprsdroid-osm/) & [Changelog](https://na7q.com/aprsdroid-changelog/)
@@ -252,7 +216,7 @@ the [LICENSE](LICENSE) file for details.
 
 Contributions are welcome from the amateur radio community! Please open an
 issue or pull request at the
-[APRSdroid-9M2PJU-Mod repo](https://github.com/9M2PJU/APRSdroid-9M2PJU-Mod).
+[APRSDroid-TAK repo](https://github.com/mitchmitchell/APRSDroid-TAK).
 
 ---
 
@@ -271,13 +235,14 @@ GPLv2 so that the community can build on his work.
 [NA7Q's fork](https://github.com/na7q/aprsdroid) builds on Georg's original
 work with BLE TNC support, digipeater and IGate functionality, symbol
 overlays, Mic-E improvements, and offline mapping. NA7Q's fork is the direct
-upstream of this mod. Homepage: <https://na7q.com/aprsdroid-osm/>
+upstream of the 9M2PJU Mod. Homepage: <https://na7q.com/aprsdroid-osm/>
 
-### 9M2PJU — This Mod
+### 9M2PJU — APRSdroid 9M2PJU Mod
 
-This mod is maintained by **9M2PJU** (Kuala Lumpur, Malaysia). It builds on
-NA7Q's fork with modern Android compatibility, Material Design UI, bottom
-navigation, in-app updates, CI/CD, and a landing page.
+**9M2PJU** (Kuala Lumpur, Malaysia) built on NA7Q's fork with modern Android
+compatibility, Material Design UI, bottom navigation, in-app updates and
+CI/CD, and rewrote the app in Kotlin and Jetpack Compose. That rewrite is
+the direct upstream of this project.
 
 ### Bob Bruninga, WB4APR — Creator of APRS
 
@@ -288,37 +253,3 @@ igate, and digipeater worldwide. Without Bob's pioneering work, none of this
 would exist.
 
 APRS® is a registered trademark of Bob Bruninga, WB4APR.
-
----
-
-## Support the project
-
-If you find APRSdroid 9M2PJU Mod useful, consider supporting development:
-
-| Method | Link |
-|---|---|
-| Malaysia e-wallet (scan QR) | See QR below |
-| Buy Me a Coffee | https://www.buymeacoffee.com/9m2pju |
-| Wise (tag: faizulz13) | https://wise.com/pay/me/faizulz13 |
-
-<div align="center">
-
-<img src="docs/assets/donation-qr.png" alt="Malaysia e-wallet donation QR" width="250">
-
-*Scan with Boost, Touch 'n Go, GrabPay, or any Malaysian e-wallet*
-
-</div>
-
----
-
-<div align="center">
-
-**Made with care by [9M2PJU](https://hamradio.my). 73.**
-
-</div>
-
-## Support
-
-If you find this project useful, please consider supporting it:
-
-[![Donate with PayPal](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://paypal.me/9M2PJU)

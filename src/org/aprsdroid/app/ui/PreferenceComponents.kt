@@ -1,6 +1,8 @@
 package org.aprsdroid.app.ui
 
 import android.content.Context
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import android.content.SharedPreferences
 import android.media.RingtoneManager
 import android.net.Uri
@@ -66,13 +68,30 @@ fun PreferenceScreen(
     onBack: (() -> Unit)? = null,
     actions: @Composable (() -> Unit)? = null,
 ) {
+    // Every settings screen goes through here, so theme them all in one place.
+    org.aprsdroid.app.ui.theme.AprsTheme { PreferenceScreenContent(title, items, onBack, actions) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PreferenceScreenContent(
+    title: String,
+    items: List<PrefItem>,
+    onBack: (() -> Unit)?,
+    actions: @Composable (() -> Unit)?,
+) {
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(title) },
                 navigationIcon = {
                     if (onBack != null) {
-                        TextButton(onClick = onBack) { Text("Back") }
+                        androidx.compose.material3.IconButton(onClick = onBack) {
+                            androidx.compose.material3.Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                            )
+                        }
                     }
                 },
                 actions = { actions?.invoke() },

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- APRSdroid strings.xml - this file contains strings which need to be translated -->
 <resources>
-<string name="app_name">APRSdroid 9M2PJU</string>
+<string name="app_name">APRSDroid-TAK</string>
 <string name="app_prefs">APRSdroid Preferences</string>
 <string name="menu">Menu</string>
 <string name="app_map">APRSdroid Map</string>
@@ -114,15 +114,14 @@
 <string name="up_to_date">You are running the latest version (%s).</string>
 <string name="update_check_failed">Could not check for updates. Check your internet connection.</string>
 <string name="report_bug">Report a bug</string>
-<string name="report_bug_subject">APRSdroid 9M2PJU Mod bug report</string>
+<string name="report_bug_subject">APRSDroid-TAK bug report</string>
 <string name="report_bug_body">Please describe the bug:\n\n\nApp version: %1$s\nAndroid: %2$s\nDevice: %3$s\n</string>
-<string name="no_email_app">No email app found. Please email 9m2pju@hamradio.my directly.</string>
+<string name="no_email_app">No app found to open the issue tracker.</string>
 
 <!-- about dialog -->
-<string name="ad_title">About APRSdroid 9M2PJU Mod</string>
-<string name="ad_copyright">APRSdroid 9M2PJU Mod\n
-	Copyright © 2026 9M2PJU\n
-	https://aprsdroid.hamradio.my
+<string name="ad_title">About APRSDroid-TAK</string>
+<string name="ad_copyright">APRSDroid-TAK\n
+	Copyright © 2009–2026 the APRSdroid authors\n
 	\n\n
 	Based on NA7Q\'s fork of APRSdroid by Georg Lukas (DO1GL)\n
 	Copyright © 2009-2021 Georg Lukas (DO1GL)\n
@@ -150,7 +149,7 @@
 <string name="ad_thanks_0">Bob Bruninga, WB4APR (1947–2022): Creator of APRS</string>
 <string name="ad_thanks_1">Georg Lukas, DO1GL: Original APRSdroid author</string>
 <string name="ad_thanks_2">Mike, NA7Q: BLE TNC, digipeater, IGate, MBTiles mapping, https://na7q.com/aprsdroid-osm/</string>
-<string name="ad_thanks_3">9M2PJU: 9M2PJU Mod, Material UI, bottom nav, in-app updates, https://hamradio.my</string>
+<string name="ad_thanks_3">9M2PJU: Kotlin and Compose rewrite, Material UI, in-app updates</string>
 <string name="ad_thanks_4">Michael, DO3BOX: idea</string>
 <string name="ad_thanks_5">Dirk, DB5OY: motivation and support</string>
 <string name="ad_thanks_6">Bastian, DB1BM: AFSK implementation</string>
@@ -216,6 +215,84 @@
 <!-- intended use is in map style menu: "file name of offline map (Offline)" -->
 <string name="map_offline"> %s (Offline)</string>
 <string name="map_objects">APRS Objects</string>
+<string name="map_type">Map type</string>
+<string name="map_terrain">Google: Terrain</string>
+<string name="map_gtiles_roadmap">Google tiles: Roadmap</string>
+<string name="map_gtiles_satellite">Google tiles: Satellite</string>
+<string name="map_gtiles_hybrid">Google tiles: Satellite + labels</string>
+<string name="map_gtiles_terrain">Google tiles: Terrain</string>
+<string name="map_need_tiles_key">Needs a Map Tiles API key (Settings → Map)</string>
+<string name="map_need_sdk_key">Needs mapsApiKey at build time</string>
+<string name="map_need_play_services">Needs Google Play services</string>
+<string name="map_gtiles_error">Google tiles unavailable, using OSM: %s</string>
+<string name="p__map">Map</string>
+<string name="p_map_type_summary">Current: %s</string>
+<string name="p_gtiles_key">Google Map Tiles API key</string>
+<string name="p_gtiles_key_summary_set">Key set (…%s). Stored on this device only; not exported or backed up.</string>
+<string name="p_gtiles_key_summary_unset">Not set. Needed for the \"Google tiles\" map types.</string>
+<string name="p_gtiles_key_hint">AIza…</string>
+<string name="p_gtiles_key_help">Enable \"Map Tiles API\" in Google Cloud, create an API key, restrict it to that API only and set a daily quota. Leave empty to remove the key.</string>
+<string name="p_gtiles_test">Test Google tiles key</string>
+<string name="p_gtiles_test_ok">Key works: Google accepted a tiles session.</string>
+<string name="p_gtiles_test_fail">Key test failed: %s</string>
+<string name="p_gmaps_sdk_status">Google Maps SDK</string>
+<string name="p_gmaps_sdk_on">Built with a Maps SDK key: \"Google:\" map types available.</string>
+<string name="p__appearance">Appearance</string>
+<string name="p_theme">Theme</string>
+<string name="p_theme_summary">Night is easier on the eyes in the dark; Day is easier to read in sunlight</string>
+<string name="p_theme_system">Follow the device</string>
+<string name="p_theme_dark">Night</string>
+<string name="p_theme_light">Day</string>
+<string name="p__atak">ATAK / TAK export</string>
+<string name="p_atak_link_summary">Send APRS stations to ATAK on this phone or to a TAK Server</string>
+<string name="p_atak_enabled">Send stations to ATAK / TAK</string>
+<string name="p_atak_enabled_summary">Every received APRS position is sent as Cursor-on-Target (CoT)</string>
+<string name="p_atak_local">ATAK on this phone (UDP)</string>
+<string name="p_atak_udp">Send to ATAK via UDP</string>
+<string name="p_atak_udp_summary">ATAK listens on UDP 4242 by default (Settings → Network → Manage Inputs)</string>
+<string name="p_atak_host">Host</string>
+<string name="p_atak_port">Port</string>
+<string name="p_atak_udp_host_summary">127.0.0.1 = this phone. 239.2.3.1 (port 6969) = Mesh SA multicast to the whole Wi-Fi network</string>
+<string name="p_atak_server">TAK Server</string>
+<string name="p_atak_tak">Send to a TAK Server</string>
+<string name="p_atak_tak_summary">Streams the stations your radio hears to the server, e.g. over Tailscale</string>
+<string name="p_atak_tak_host_summary">Server host name (must match its certificate when verifying)</string>
+<string name="p_atak_tls">Use TLS</string>
+<string name="p_atak_tls_on">TLS (normally port 8089), with the client certificate below</string>
+<string name="p_atak_tls_off">Plain TCP (normally port 8087) — testing only, not encrypted</string>
+<string name="p_atak_verify_host">Verify server host name</string>
+<string name="p_atak_verify_host_on">Server certificate must match the host name</string>
+<string name="p_atak_verify_host_off">Host name not checked (certificate chain still verified)</string>
+<string name="p_atak_cert">Client certificate (.p12)</string>
+<string name="p_atak_cert_none">None. Import a .p12 from your CA; its CA chain is also used to verify the server.</string>
+<string name="p_atak_cert_info">%1$s\n%2$d CA certificate(s) • valid until %3$s</string>
+<string name="p_atak_cert_remove">Remove client certificate</string>
+<string name="p_atak_cert_password">Password for the .p12 file</string>
+<string name="p_atak_cert_ok">Imported %s</string>
+<string name="p_atak_cert_fail">Could not import certificate: %s</string>
+<string name="p_atak_what">What to send</string>
+<string name="p_atak_own">Include my own position</string>
+<string name="p_atak_own_summary">Off: ATAK already shows you from the phone\'s GPS</string>
+<string name="p_atak_objects">Include objects and items</string>
+<string name="p_atak_internet">Include stations from APRS-IS</string>
+<string name="p_atak_internet_summary">Off: only stations heard over RF</string>
+<string name="p_atak_cot">CoT format</string>
+<string name="p_atak_stale">Stale time (minutes)</string>
+<string name="p_atak_stale_summary">How long ATAK shows a station after its last position</string>
+<string name="p_atak_uid_prefix">UID prefix</string>
+<string name="p_atak_uid_prefix_summary">\"APRS.\" matches aprscot, so both feeds update the same marker</string>
+<string name="p_atak_name_suffix">Callsign suffix</string>
+<string name="p_atak_cot_type">CoT type</string>
+<string name="p_atak_cot_type_summary">One marker type for all stations. The APRS symbol comes from the icon, not the type. Keep the same value as your aprscot gateway.</string>
+<string name="p_atak_icons_cat">APRS icons</string>
+<string name="p_atak_icons">Send APRS symbol icons</string>
+<string name="p_atak_icons_summary">Each station is drawn with its APRS symbol and grouped in ATAK\'s \"APRS\" overlay. Needs the APRS iconset in ATAK.</string>
+<string name="p_atak_iconset_export">Send the APRS iconset to ATAK</string>
+<string name="p_atak_iconset_export_summary">Only needed if ATAK does not already have it from your TAK Server. Choose ATAK (Import) in the share list.</string>
+<string name="p_atak_iconset_export_fail">Could not build the iconset: %s</string>
+<string name="p_atak_iconset_uid">Iconset UID</string>
+<string name="p_atak_iconset_uid_summary">Must match the iconset installed in ATAK</string>
+<string name="p_gmaps_sdk_off">Built without mapsApiKey: \"Google:\" SDK map types hidden.</string>
 
 <!-- map view -->
 <string name="age">Show last...</string>

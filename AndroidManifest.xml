@@ -20,6 +20,7 @@
         tools:targetApi="s" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BROADCAST_STICKY" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
@@ -41,8 +42,15 @@
 	    android:usesCleartextTraffic="true"
 	    android:requestLegacyExternalStorage="true"
 	    android:allowBackup="true"
+	    android:fullBackupContent="@xml/backup_rules"
+	    android:dataExtractionRules="@xml/data_extraction_rules"
 	    android:theme="@style/AppTheme" >
 
+	<!-- Google Maps SDK key, injected at build time from local.properties
+	     (mapsApiKey=...) — never committed. Empty disables the SDK map types. -->
+	<meta-data
+		android:name="com.google.android.geo.API_KEY"
+		android:value="${MAPS_API_KEY}" />
 	<uses-library android:name="org.apache.http.legacy" android:required="false"/>
         <activity android:name=".APRSdroid"
 		android:configChanges="orientation|keyboardHidden|screenSize"
@@ -136,6 +144,16 @@
 		<category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 	</activity>
+	<activity android:name=".AtakPrefs"
+		android:label="@string/p__atak"
+		android:parentActivityName=".PrefsAct"
+		android:exported="false" />
+	<activity android:name=".GoogleMapAct" android:label="@string/app_map"
+		android:launchMode="singleTop"
+		android:parentActivityName=".HubActivity"
+		android:configChanges="orientation|keyboardHidden|screenSize"
+		android:exported="false"
+		/>
 	<activity android:name=".ProfileImportActivity" android:label="@string/profile_import_activity"
 		android:exported="true">
 	    <intent-filter>

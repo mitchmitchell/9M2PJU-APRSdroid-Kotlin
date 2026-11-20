@@ -36,7 +36,7 @@ class IgateService(private val service: AprsService, private val prefs: PrefsWra
 
     private val TAG = "IgateService"
 
-    private val hostport = prefs.getString("p.igserver", "aprs.hamradio.my")
+    private val hostport = prefs.getString("p.igserver", "rotate.aprs2.net")
     private val host: String
     private val port: Int
 
@@ -219,7 +219,7 @@ class TcpSocketThread(
         val loginMessage = "user $callsign pass $passcode vers $version\r\n"
         val filterMessage = "#filter $filter\r\n"
 
-        Log.d(TAG, "sendLogin() - Sending login: $loginMessage")
+        Log.d(TAG, "sendLogin() - Sending login: ${AprsPacket.maskPasscode(loginMessage)}")
         Log.d(TAG, "sendLogin() - Sending filter: $filterMessage")
 
         writer!!.println(loginMessage)

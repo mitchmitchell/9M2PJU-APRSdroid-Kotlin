@@ -43,15 +43,16 @@ import java.net.URL
 object UpdateChecker {
 
     private const val TAG = "UpdateChecker"
-    private const val REPO_OWNER = "9M2PJU"
-    private const val REPO_NAME = "APRSdroid-9M2PJU-Mod"
+    private const val REPO_OWNER = "mitchmitchell"
+    private const val REPO_NAME = "APRSDroid-TAK"
     private const val API_URL = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/releases/latest"
     private const val RELEASES_URL = "https://github.com/$REPO_OWNER/$REPO_NAME/releases/latest"
 
     // Fallback: self-hosted version.json on Cloudflare CDN (different
     // network than api.github.com, works when GitHub API is blocked/
     // throttled)
-    private const val FALLBACK_URL = "https://aprsdroid.hamradio.my/version.json"
+    // No self-hosted fallback for this fork; empty disables it.
+    private const val FALLBACK_URL = ""
     private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L // 24 hours
 
     // Result of fetching release info from GitHub API
@@ -78,7 +79,7 @@ object UpdateChecker {
     /**
      * Compare two version strings. Returns true if `remote` is newer
      * than `local`. Handles git describe output like
-     * "v1.4.7-9M2PJU-12-gabc123" by stripping suffixes and comparing
+     * "v1.4.7-mod-12-gabc123" by stripping suffixes and comparing
      * numeric components.
      */
     fun isNewerVersion(local: String?, remote: String?): Boolean {
@@ -129,6 +130,7 @@ object UpdateChecker {
             return@withContext apiResult
         }
         // Fallback: self-hosted version.json
+        if (FALLBACK_URL.isEmpty()) return@withContext null
         Log.d(TAG, "GitHub API failed, trying fallback: $FALLBACK_URL")
         fetchFromFallback()
     }
@@ -138,7 +140,7 @@ object UpdateChecker {
         return try {
             conn.requestMethod = "GET"
             conn.setRequestProperty("Accept", "application/vnd.github+json")
-            conn.setRequestProperty("User-Agent", "APRSdroid-9M2PJU-Mod")
+            conn.setRequestProperty("User-Agent", "APRSDroid-TAK")
             conn.connectTimeout = 10000
             conn.readTimeout = 10000
             if (conn.responseCode != 200) {
@@ -184,7 +186,7 @@ object UpdateChecker {
         val conn = (URL(FALLBACK_URL).openConnection() as HttpURLConnection)
         return try {
             conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", "APRSdroid-9M2PJU-Mod")
+            conn.setRequestProperty("User-Agent", "APRSDroid-TAK")
             conn.connectTimeout = 10000
             conn.readTimeout = 10000
             if (conn.responseCode != 200) {
@@ -266,7 +268,7 @@ object UpdateChecker {
                 try {
                     val conn = (URL(info.apkUrl).openConnection() as HttpURLConnection)
                     conn.requestMethod = "GET"
-                    conn.setRequestProperty("User-Agent", "APRSdroid-9M2PJU-Mod")
+                    conn.setRequestProperty("User-Agent", "APRSDroid-TAK")
                     conn.connectTimeout = 30000
                     conn.readTimeout = 60000
                     conn.connect()

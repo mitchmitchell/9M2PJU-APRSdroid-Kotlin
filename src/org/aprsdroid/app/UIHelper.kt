@@ -26,24 +26,45 @@ object UIHelper {
         } else {
             Environment.getExternalStorageDirectory()
         }
-        return File(base, "APRSdroid")
+        val public = File(base, "APRSdroid")
+        // Public Documents needs "all files access" on Android 11+. Without
+        // it, fall back to app-owned storage so exports still work and can
+        // be shared through the FileProvider.
+        try {
+            public.mkdirs()
+            if (public.isDirectory && public.canWrite()) {
+                val probe = File(public, ".write-test")
+                if (probe.createNewFile() || probe.exists()) {
+                    probe.delete()
+                    return public
+                }
+            }
+        } catch (_: Exception) {
+        }
+        val own = File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "exports")
+        own.mkdirs()
+        return own
     }
 
     /**
      * Share a file via Android's share sheet (ACTION_SEND).
      */
     @JvmStatic
-    fun shareFile(ctx: Context, file: File, filename: String) {
-        ctx.startActivity(
-            Intent.createChooser(
-                Intent(Intent.ACTION_SEND)
-                    .setType("text/plain")
-                    .putExtra(Intent.EXTRA_STREAM,
-                        FileProvider.getUriForFile(ctx, "org.aprsdroid.fileprovider", file))
-                    .putExtra(Intent.EXTRA_SUBJECT, filename),
-                file.toString(),
-            ),
-        )
+    @JvmOverloads
+    fun shareFile(ctx: Context, file: File, filename: String, mimeType: String = "text/plain") {
+        val uri = FileProvider.getUriForFile(ctx, "org.aprsdroid.fileprovider", file)
+        val send = Intent(Intent.ACTION_SEND)
+            .setType(mimeType)
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .putExtra(Intent.EXTRA_SUBJECT, filename)
+            // Without the grant flag (and ClipData, which carries the grant
+            // through the chooser) the receiving app cannot read the file.
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        send.clipData = android.content.ClipData.newRawUri(filename, uri)
+        val chooser = Intent.createChooser(send, filename)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        if (ctx !is Activity) chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        ctx.startActivity(chooser)
     }
 
     /**
@@ -100,7 +121,18 @@ object UIHelper {
 
             v.setPadding(leftPad, topPad, rightPad, 0)
 
-            insets
+            // We have just padded for the status bar, so tell the content it is
+            // already handled. Otherwise Compose's top bars pad for it a second
+            // time, leaving an empty band at the top of every screen. Bottom
+            // (navigation bar) and keyboard insets are left for Compose.
+            if (Build.VERSION.SDK_INT >= 30) {
+                WindowInsets.Builder(insets)
+                    .setInsets(WindowInsets.Type.statusBars(), android.graphics.Insets.NONE)
+                    .build()
+            } else {
+                @Suppress("DEPRECATION")
+                insets.replaceSystemWindowInsets(0, 0, 0, bottomPad)
+            }
         }
     }
 }

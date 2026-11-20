@@ -27,7 +27,7 @@ class TcpUploader(private val service: AprsService, prefs: PrefsWrapper) :
     AprsBackendAbstract(prefs) {
 
     private val TAG = "APRSdroid.TcpUploader"
-    private val hostport = prefs.getString("tcp.server", "aprs.hamradio.my")
+    private val hostport = prefs.getString("tcp.server", "rotate.aprs2.net")
     private val soTimeout = prefs.getStringInt("tcp.sotimeout", 120)
     private val RECONNECT = 30
     private var conn: TcpSocketThread? = null

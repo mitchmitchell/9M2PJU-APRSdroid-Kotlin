@@ -156,6 +156,9 @@ fun AprsOverflowMenu(
     }
 }
 
+/** Where About and Report a bug point. One place to change when the project gets a home page. */
+private const val PROJECT_URL = "https://github.com/mitchmitchell/APRSDroid-TAK"
+
 @Composable
 private fun AboutDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -166,18 +169,19 @@ private fun AboutDialog(onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("APRSdroid 9M2PJU Mod") },
+        title = { Text("APRSDroid-TAK") },
         text = {
             Text(
                 "Version $version\n\n" +
-                "APRSdroid is an Android application for the Automatic Packet " +
-                "Reporting System (APRS).\n\n" +
-                "9M2PJU Mod features:\n" +
-                "• Material 3 / Jetpack Compose UI\n" +
-                "• OSM / MapsForge offline maps\n" +
-                "• In-app updates\n" +
-                "• Bottom navigation\n\n" +
-                "https://aprsdroid.hamradio.my/",
+                "APRSdroid with a TAK link: an Android app for the Automatic Packet Reporting System (APRS). " +
+                "Free software under the GNU GPL v2.\n\n" +
+                "Built on the work of:\n" +
+                "• Bob Bruninga, WB4APR: creator of APRS\n" +
+                "• Georg Lukas, DO1GL: original APRSdroid\n" +
+                "• Mike, NA7Q: BLE TNC, digipeater, IGate, offline maps\n" +
+                "• 9M2PJU: Kotlin and Compose rewrite\n\n" +
+                "This build adds Google Maps, sending stations to ATAK and TAK Server, " +
+                "and a redesigned interface.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         },
@@ -187,9 +191,9 @@ private fun AboutDialog(onDismiss: () -> Unit) {
         dismissButton = {
             TextButton(onClick = {
                 val intent = Intent(Intent.ACTION_VIEW,
-                    Uri.parse("https://aprsdroid.hamradio.my/"))
+                    Uri.parse(PROJECT_URL))
                 context.startActivity(intent)
-            }) { Text("Homepage") }
+            }) { Text("Project page") }
         },
     )
 }
@@ -223,7 +227,8 @@ private fun exportLog(activity: Activity) {
     GlobalScope.launch(Dispatchers.IO) {
         try {
             val db = AprsDatabase.get(activity)
-            val posts = db.postDao().getExportPostsList()
+            // Full log: packets plus info, error and crash entries.
+            val posts = db.postDao().getFullLogList()
             if (posts.isEmpty()) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(activity, "Nothing to export", Toast.LENGTH_SHORT).show()
@@ -236,21 +241,29 @@ private fun exportLog(activity: Activity) {
             val file = File(dir, "aprsdroid-${sdf.format(Date())}.log")
             PrintWriter(file).use { writer ->
                 writer.println("# APRSdroid log export")
+                writer.println("# ${activity.getString(org.aprsdroid.app.R.string.build_version)}" +
+                    " / Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})" +
+                    " / ${Build.MANUFACTURER} ${Build.MODEL}")
                 for (post in posts) {
                     val typeStr = when (post.type) {
-                        0, 3 -> "RX"
+                        0 -> "TX"
+                        1 -> "INFO"
+                        2 -> "ERR"
+                        3 -> "RX"
                         4 -> "TX"
                         5 -> "DP"
                         6 -> "IG"
                         else -> "??"
                     }
                     val ts = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(Date(post.ts))
-                    writer.println("$ts\t$typeStr\t${post.message ?: ""}")
+                    val status = if (post.type == 1 || post.type == 2) "${post.status ?: ""}\t" else ""
+                    val msg = org.aprsdroid.app.AprsPacket.maskPasscode(post.message ?: "")
+                    writer.println("$ts\t$typeStr\t$status$msg")
                 }
             }
             withContext(Dispatchers.Main) {
                 UIHelper.shareFile(activity, file, file.name)
-                Toast.makeText(activity, "Exported ${posts.size} packets", Toast.LENGTH_SHORT).show()
+                Toast.makeText(activity, "Exported ${posts.size} log entries", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             withContext(Dispatchers.Main) {
@@ -306,13 +319,17 @@ private fun reportBug(activity: Activity) {
         "Android: ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\n" +
         "Device: ${Build.MANUFACTURER} ${Build.MODEL}\n"
 
-    val intent = Intent(Intent.ACTION_SENDTO,
-        Uri.parse("mailto:9m2pju@hamradio.my"))
-        .putExtra(Intent.EXTRA_SUBJECT, "APRSdroid 9M2PJU Mod bug report")
-        .putExtra(Intent.EXTRA_TEXT, body)
+    // Bugs go to the project's issue tracker, with the device details filled in.
+    val intent = Intent(
+        Intent.ACTION_VIEW,
+        Uri.parse("$PROJECT_URL/issues/new").buildUpon()
+            .appendQueryParameter("title", "Bug: ")
+            .appendQueryParameter("body", body)
+            .build(),
+    )
     try {
-        activity.startActivity(Intent.createChooser(intent, "Report bug"))
+        activity.startActivity(intent)
     } catch (_: Exception) {
-        Toast.makeText(activity, "No email app available", Toast.LENGTH_SHORT).show()
+        Toast.makeText(activity, "No app found to open the issue tracker", Toast.LENGTH_SHORT).show()
     }
 }

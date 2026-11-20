@@ -56,12 +56,19 @@ class StationDetailViewModel(
                 initialValue = emptyList(),
             )
 
-    // Post type colors — post, info, error, incoming, tx, digi, ig
-    val postColors: IntArray = intArrayOf(
-        0xff30b030.toInt(), 0xffc0c080.toInt(), 0xffffb0b0.toInt(),
-        0xff8080b0.toInt(), 0xff30b030.toInt(), 0xfff38c0c.toInt(),
-        0xffe3d61c.toInt(),
-    )
+    val isMetric: Boolean = org.aprsdroid.app.PrefsWrapper(app).isMetric()
+    val myCall: String = org.aprsdroid.app.PrefsWrapper(app).getCallSsid()
+
+    /** Our own position (latE6, lonE6): our latest beacon, else the phone's last fix. */
+    val myPosition: StateFlow<Pair<Int, Int>?> =
+        kotlinx.coroutines.flow.flow {
+            val own = db.stationDao().getStaPosition(myCall)
+            emit(
+                own?.let { it.lat to it.lon }
+                    ?: org.aprsdroid.app.MapData.lastKnownLocation(app)
+                        ?.let { (it.lat * 1e6).toInt() to (it.lon * 1e6).toInt() },
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     class Factory(private val app: Application, private val targetCall: String) :
         ViewModelProvider.Factory {

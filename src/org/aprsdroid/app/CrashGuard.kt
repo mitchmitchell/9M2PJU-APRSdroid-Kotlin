@@ -76,7 +76,7 @@ object CrashGuard {
                         System.currentTimeMillis(),
                         org.aprsdroid.app.data.PostEntity.TYPE_ERROR,
                         "Crash",
-                        stackTrace.take(2000), // limit length
+                        stackTrace.take(16000), // limit length, but keep "Caused by" sections
                     )
                 }
             } catch (e: Exception) {
