@@ -49,6 +49,8 @@ class GoogleMapMode(
     tag: String,
     titleRes: Int,
     val mapType: Int,
+    /** Muted colours and no points of interest, so station symbols stand out. */
+    val quiet: Boolean = false,
 ) : MapMode(tag, titleRes, GoogleMapAct::class.java) {
 
     override fun isAvailable(ctx: Context): Boolean =
@@ -78,9 +80,11 @@ object MapModes {
         if (allMapModes.isNotEmpty()) return
         allMapModes += MapsforgeOnlineMode("osm", R.string.map_osm)
         allMapModes += GoogleMapMode("google", R.string.map_google, GoogleMap.MAP_TYPE_NORMAL)
+        allMapModes += GoogleMapMode("google_quiet", R.string.map_google_quiet, GoogleMap.MAP_TYPE_NORMAL, quiet = true)
         allMapModes += GoogleMapMode("satellite", R.string.map_satellite, GoogleMap.MAP_TYPE_HYBRID)
         allMapModes += GoogleMapMode("terrain", R.string.map_terrain, GoogleMap.MAP_TYPE_TERRAIN)
         allMapModes += GoogleTilesMode(GoogleTiles.Type.ROADMAP.tag, R.string.map_gtiles_roadmap, GoogleTiles.Type.ROADMAP)
+        allMapModes += GoogleTilesMode(GoogleTiles.Type.QUIET.tag, R.string.map_gtiles_quiet, GoogleTiles.Type.QUIET)
         allMapModes += GoogleTilesMode(GoogleTiles.Type.SATELLITE.tag, R.string.map_gtiles_satellite, GoogleTiles.Type.SATELLITE)
         allMapModes += GoogleTilesMode(GoogleTiles.Type.HYBRID.tag, R.string.map_gtiles_hybrid, GoogleTiles.Type.HYBRID)
         allMapModes += GoogleTilesMode(GoogleTiles.Type.TERRAIN.tag, R.string.map_gtiles_terrain, GoogleTiles.Type.TERRAIN)
@@ -149,4 +153,18 @@ object MapModes {
     fun setDefault(prefs: PrefsWrapper, tag: String) {
         prefs.set("mapmode", tag)
     }
+}
+
+/** Map styling shared by the Google Maps SDK map and Google map tiles. */
+object MapStyles {
+    /**
+     * A quiet base map: nearly grey, with points of interest, transit and road
+     * shields hidden, so the APRS symbols are the only colour on the map.
+     */
+    const val QUIET_JSON = """[
+  {"stylers":[{"saturation":-85},{"lightness":8}]},
+  {"featureType":"poi","stylers":[{"visibility":"off"}]},
+  {"featureType":"transit","stylers":[{"visibility":"off"}]},
+  {"featureType":"road","elementType":"labels.icon","stylers":[{"visibility":"off"}]}
+]"""
 }

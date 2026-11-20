@@ -1,6 +1,7 @@
 package org.aprsdroid.app
 
 import org.aprsdroid.app.ui.MapStationLayer
+import org.aprsdroid.app.ui.MapButton
 import org.aprsdroid.app.ui.AprsBottomBar
 import org.aprsdroid.app.ui.AprsOverflowMenu
 import org.aprsdroid.app.ui.MapTypeMenu
@@ -50,7 +51,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -112,7 +114,10 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     private var trackedCall by mutableStateOf("")
     /** Station shown in the slide-up panel ("" = none). */
     private var selectedCall by mutableStateOf("")
-    private var searchOpen by mutableStateOf(false)
+    /** Stations of a tapped cluster, offered as a list in the panel. */
+    private var clusterCalls by mutableStateOf(emptyList<String>())
+    private var stationFilter by mutableStateOf(StationFilter.ALL)
+    private var stationCounts by mutableStateOf(StationCounts(0, 0, 0))
     /** Bumped on every station reload so the panel refreshes. */
     private var dataVersion by mutableStateOf(0)
     private var targetcall: String
@@ -289,7 +294,8 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                             mv.isClickable = true
                             mv.isFocusable = true
                             mv.isFocusableInTouchMode = true
-                            mv.setBuiltInZoomControls(true)
+                            // The normal map has its own round zoom buttons; the position picker has no chrome.
+                            mv.setBuiltInZoomControls(isCoordinateChooser)
                             mv.overlays.add(staoverlay)
                             mv.setTextScale(resources.displayMetrics.density)
                             mapview = mv
@@ -304,60 +310,71 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                 )
 
                 if (!isCoordinateChooser) {
-                    if (targetcall.isNotEmpty() && !searchOpen) {
-                        org.aprsdroid.app.ui.TrackingChip(
-                            call = targetcall,
-                            onStop = { targetcall = "" ; trackedCall = "" ; reloadMap() },
-                            modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
-                        )
-                    }
-                    org.aprsdroid.app.ui.MapControlStack(
+                    org.aprsdroid.app.ui.MapButtonColumn(
                         modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
                     ) {
-                        IconButton(onClick = { searchOpen = !searchOpen }) {
-                            Icon(Icons.Filled.Search, contentDescription = "Find a callsign")
-                        }
-                        MapTypeMenu(currentTag = currentModeTag) { mode ->
-                            if (!MapModes.switchTo(this@MapAct, prefs, mode, targetcall)) {
-                                currentModeTag = mode.tag
-                                reloadMapAndTheme()
+                        MapButton {
+                            IconButton(onClick = { changeZoom(1) }) {
+                                Icon(Icons.Filled.Add, contentDescription = "Zoom in")
                             }
                         }
-                        IconButton(onClick = {
-                            val newState = prefs.toggleBoolean("show_objects", true)
-                            showObjectsChecked = newState
-                            showObjects = newState
-                            reloadMap()
-                        }) {
-                            Icon(
-                                if (showObjectsChecked) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                                contentDescription = if (showObjectsChecked) "Hide objects" else "Show objects",
+                        MapButton {
+                            IconButton(onClick = { changeZoom(-1) }) {
+                                Icon(Icons.Filled.Remove, contentDescription = "Zoom out")
+                            }
+                        }
+                        MapButton {
+                            IconButton(onClick = { centerOnMyLocation() }) {
+                                Icon(Icons.Filled.MyLocation, contentDescription = "Go to my location")
+                            }
+                        }
+                        MapButton {
+                            MapTypeMenu(currentTag = currentModeTag) { mode ->
+                                if (!MapModes.switchTo(this@MapAct, prefs, mode, targetcall)) {
+                                    currentModeTag = mode.tag
+                                    reloadMapAndTheme()
+                                }
+                            }
+                        }
+                        MapButton {
+                            IconButton(onClick = {
+                                val newState = prefs.toggleBoolean("show_objects", true)
+                                showObjectsChecked = newState
+                                showObjects = newState
+                                reloadMap()
+                            }) {
+                                Icon(
+                                    if (showObjectsChecked) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                    contentDescription = if (showObjectsChecked) "Hide objects" else "Show objects",
+                                )
+                            }
+                        }
+                        MapButton {
+                            AprsOverflowMenu(
+                                showAgeFilter = true,
+                                onPreferences = { AprsNavigation.openPreferences(this@MapAct) },
+                                onAgeChanged = { reloadMap() },
                             )
                         }
-                        IconButton(onClick = { centerOnMyLocation() }) {
-                            Icon(Icons.Filled.MyLocation, contentDescription = "Go to my location")
-                        }
-                        AprsOverflowMenu(
-                            showAgeFilter = true,
-                            onPreferences = { AprsNavigation.openPreferences(this@MapAct) },
-                            onAgeChanged = { reloadMap() },
-                        )
                     }
                     MapStationLayer(
                         selectedCall = selectedCall,
+                        clusterCalls = clusterCalls,
                         followedCall = trackedCall,
-                        searchOpen = searchOpen,
                         refreshKey = dataVersion,
-                        onSearchClose = { searchOpen = false },
+                        filter = stationFilter,
+                        counts = stationCounts,
+                        onFilter = { stationFilter = it; reloadMap() },
                         onFound = { sta ->
-                            searchOpen = false
+                            clusterCalls = emptyList()
                             selectedCall = sta.call
                             mapview?.let { mv ->
                                 mv.controller.setCenter(GeoPoint(sta.lat, sta.lon))
-                                if (mv.mapPosition.zoomLevel < 12) mv.controller.setZoom(12)
+                                if (mv.mapPosition.zoomLevel < 13) mv.controller.setZoom(13)
                             }
                         },
-                        onDismiss = { selectedCall = "" },
+                        onPick = { call -> clusterCalls = emptyList(); selectedCall = call },
+                        onDismiss = { selectedCall = ""; clusterCalls = emptyList() },
                         onFollow = { call -> targetcall = call; reloadMap() },
                         onStopFollowing = { targetcall = ""; reloadMap() },
                     )
@@ -629,6 +646,9 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         }
     }
 
+    /** Our own callsign, for the overlay (never clustered). */
+    fun myCallForOverlay(): String = prefs.getCallSsid()
+
     /** The followed callsign, for the overlay (drawn first and highlighted). */
     fun trackedCallForOverlay(): String = trackedCall
 
@@ -668,8 +688,8 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
             // Back closes search or the station panel before leaving the map.
-            KeyEvent.KEYCODE_BACK -> if (searchOpen || selectedCall.isNotEmpty()) {
-                searchOpen = false
+            KeyEvent.KEYCODE_BACK -> if (selectedCall.isNotEmpty() || clusterCalls.isNotEmpty()) {
+                clusterCalls = emptyList()
                 selectedCall = ""
                 return true
             }
@@ -776,8 +796,27 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     /** A station was tapped: show it in the slide-up panel, keeping the map in view. */
     fun openDetails(call: String) {
         runOnUiThread {
-            searchOpen = false
+            clusterCalls = emptyList()
             selectedCall = call
+        }
+    }
+
+    /**
+     * A cluster was tapped. A handful of stations (or a pile that will not
+     * separate however far you zoom) is listed in the panel; a bigger cluster
+     * zooms in on itself.
+     */
+    fun openCluster(calls: List<String>, lat: Double, lon: Double) {
+        runOnUiThread {
+            val mv = mapview ?: return@runOnUiThread
+            val zoom = mv.mapPosition.zoomLevel.toInt()
+            if (calls.size <= 6 || zoom >= 16) {
+                selectedCall = ""
+                clusterCalls = calls
+            } else {
+                mv.controller.setCenter(GeoPoint(lat, lon))
+                mv.controller.setZoom(minOf(zoom + 2, 18))
+            }
         }
     }
 
@@ -786,7 +825,11 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
      */
     private fun loadStations(): ArrayList<OSMStation> {
         val stations = ArrayList<OSMStation>()
-        for (sta in MapData.loadStations(this, prefs, targetcall, showObjects)) {
+        val all = MapData.loadStations(this, prefs, targetcall, showObjects)
+        val counts = MapFilters.counts(all)
+        runOnUiThread { stationCounts = counts }
+        val keep = setOf(prefs.getCallSsid(), targetcall)
+        for (sta in MapFilters.apply(all, stationFilter, keep)) {
             val movelog = ArrayList<GeoPoint>(sta.trace.size)
             for (p in sta.trace) movelog.add(GeoPoint(p.lat, p.lon))
             stations.add(OSMStation(movelog, GeoPoint(sta.pos.lat, sta.pos.lon), sta.call, sta.origin ?: "", sta.symbol))
@@ -823,6 +866,9 @@ class OSMStation(
  * Custom ItemizedOverlay that renders APRS stations as symbols from
  * the allicons sprite sheet, with callsign labels and movement traces.
  */
+/** Cluster grid cell, in dp. Circles are at most 0.46 of this in radius, so they never touch. */
+private const val CLUSTER_CELL_DP = 64f
+
 class StationOverlay(
     icons: Drawable,
     private val context: MapAct,
@@ -844,6 +890,12 @@ class StationOverlay(
     init {
         icons.setBounds(0, 0, symbolSize, symbolSize)
     }
+
+    /** A cluster as last drawn, in screen pixels, for hit-testing taps. */
+    private class ClusterHit(val x: Int, val y: Int, val r: Int, val lat: Double, val lon: Double, val calls: List<String>)
+
+    @Volatile
+    private var lastClusters: List<ClusterHit> = emptyList()
 
     override fun size(): Int = stations.size
     override fun createItem(idx: Int): OSMStation = stations[idx]
@@ -925,16 +977,35 @@ class StationOverlay(
         val showDetail = zoom.toInt() >= 10
         val tracked = context.trackedCallForOverlay()
 
-        // Visible stations, the followed one first so it always gets its label.
+        // Group stations that would overlap at this zoom into clusters. The
+        // followed station and our own are never absorbed.
+        val mine = context.myCallForOverlay()
+        val cell = (CLUSTER_CELL_DP * context.resources.displayMetrics.density).toDouble()
+        val groups = MapCluster.cluster(
+            stations, zoom.toDouble(), cell,
+            { it.point.latitude }, { it.point.longitude },
+            { it.call == tracked || it.call == mine },
+        )
+
+        // Visible single stations, the followed one first so it always gets its label.
         class Visible(val s: OSMStation, val x: Int, val y: Int)
+        class VisibleCluster(val g: MapCluster.Group<OSMStation>, val x: Int, val y: Int, val r: Int)
         val visible = ArrayList<Visible>()
-        for (s in stations) {
-            proj.toPixels(s.getPoint(), p)
-            if (p.x >= -ss && p.y >= -ss && p.x < width + ss && p.y < height + ss) {
-                visible.add(Visible(s, p.x, p.y))
+        val clusters = ArrayList<VisibleCluster>()
+        val margin = (cell / 2).toInt()
+        for (g in groups) {
+            proj.toPixels(GeoPoint(g.lat, g.lon), p)
+            if (p.x < -margin || p.y < -margin || p.x >= width + margin || p.y >= height + margin) continue
+            if (g.isCluster) {
+                // Bigger clusters get a slightly bigger circle, but never bigger than the cell.
+                val r = (cell * (0.30 + 0.04 * minOf(g.items.size.toString().length, 4))).toInt()
+                clusters.add(VisibleCluster(g, p.x, p.y, r))
+            } else {
+                visible.add(Visible(g.items[0], p.x, p.y))
             }
         }
         visible.sortByDescending { it.s.call == tracked }
+        lastClusters = clusters.map { ClusterHit(it.x, it.y, it.r, it.g.lat, it.g.lon, it.g.items.map { s -> s.call }) }
 
         // 1. traces underneath everything
         if (showDetail) for (v in visible) drawTrace(c, proj, v.s)
@@ -949,6 +1020,28 @@ class StationOverlay(
             }
             // Icons block labels with a slightly smaller box, so neighbours can still be named.
             taken.add(Rect(v.x - ss * 3 / 4, v.y - ss * 3 / 4, v.x + ss * 3 / 4, v.y + ss * 3 / 4))
+        }
+
+        // 2b. cluster circles: navy disc, amber ring, count
+        if (clusters.isNotEmpty()) {
+            val disc = Paint().apply { color = 0xf01c2f51.toInt(); isAntiAlias = true }
+            val ring = Paint().apply {
+                color = 0xffebcf3a.toInt(); isAntiAlias = true
+                style = Paint.Style.STROKE; strokeWidth = drawSize / 10f
+            }
+            val countPaint = Paint().apply {
+                color = 0xffffffff.toInt(); isAntiAlias = true
+                textAlign = Paint.Align.CENTER
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            }
+            for (cl in clusters) {
+                c.drawCircle(cl.x.toFloat(), cl.y.toFloat(), cl.r.toFloat(), disc)
+                c.drawCircle(cl.x.toFloat(), cl.y.toFloat(), cl.r.toFloat(), ring)
+                countPaint.textSize = cl.r * 0.85f
+                val fmc = countPaint.fontMetrics
+                c.drawText(cl.g.items.size.toString(), cl.x.toFloat(), cl.y - (fmc.ascent + fmc.descent) / 2, countPaint)
+                taken.add(Rect(cl.x - cl.r, cl.y - cl.r, cl.x + cl.r, cl.y + cl.r))
+            }
         }
 
         // 3. labels, skipping any that would collide
@@ -992,10 +1085,22 @@ class StationOverlay(
     override fun onTap(gp: GeoPoint, mv: MapView): Boolean {
         val proj = mv.projection
         val p = proj.toPixels(gp, null)
+        // A cluster circle takes the tap before any single station near it.
+        for (cl in lastClusters) {
+            val dx = p.x - cl.x
+            val dy = p.y - cl.y
+            val reach = cl.r + 12
+            if (dx * dx + dy * dy <= reach * reach) {
+                context.openCluster(cl.calls, cl.lat, cl.lon)
+                return true
+            }
+        }
+        val clustered = HashSet<String>()
+        for (cl in lastClusters) clustered.addAll(cl.calls)
         val botleft = proj.fromPixels(p.x - 50, p.y + 50)
         val topright = proj.fromPixels(p.x + 50, p.y - 50)
         Log.d(tag, "from $botleft to $topright")
-        val list = stations.filter { it.inArea(botleft, topright) }.map { it.call }
+        val list = stations.filter { it.call !in clustered && it.inArea(botleft, topright) }.map { it.call }
         Log.d(tag, "found ${list.size} stations")
         return when {
             list.isEmpty() -> false
@@ -1004,13 +1109,7 @@ class StationOverlay(
                 true
             }
             else -> {
-                AlertDialog.Builder(context)
-                    .setTitle(R.string.map_select)
-                    .setItems(list.toTypedArray()) { _, item ->
-                        context.openDetails(list[item])
-                    }
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .show()
+                context.openCluster(list, gp.latitude, gp.longitude)
                 true
             }
         }

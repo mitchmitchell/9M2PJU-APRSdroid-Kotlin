@@ -210,6 +210,7 @@
 <!-- map view -->
 <string name="map_overlays">Overlays</string>
 <string name="map_google">Google: Map</string>
+<string name="map_google_quiet">Google: Quiet map</string>
 <string name="map_satellite">Google: Satellite</string>
 <string name="map_osm">OpenStreetMap.org</string>
 <!-- intended use is in map style menu: "file name of offline map (Offline)" -->
@@ -218,6 +219,7 @@
 <string name="map_type">Map type</string>
 <string name="map_terrain">Google: Terrain</string>
 <string name="map_gtiles_roadmap">Google tiles: Roadmap</string>
+<string name="map_gtiles_quiet">Google tiles: Quiet map</string>
 <string name="map_gtiles_satellite">Google tiles: Satellite</string>
 <string name="map_gtiles_hybrid">Google tiles: Satellite + labels</string>
 <string name="map_gtiles_terrain">Google tiles: Terrain</string>

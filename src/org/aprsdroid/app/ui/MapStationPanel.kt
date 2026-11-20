@@ -3,10 +3,22 @@ package org.aprsdroid.app.ui
 import android.content.Intent
 import android.location.Location
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.Role
+import org.aprsdroid.app.StationCounts
+import org.aprsdroid.app.StationFilter
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
@@ -35,7 +47,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -43,8 +54,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -73,59 +82,150 @@ import org.aprsdroid.app.ui.theme.CallsignStyle
 private class PanelData(val station: StationEntity, val distance: String?)
 
 /**
- * Callsign search and the selected-station panel, drawn over the map.
+ * Everything drawn over the map except the buttons: the search bar, filter
+ * chips and connection status at the top, and at the bottom the panel for the
+ * station (or small cluster) the user tapped.
  *
+ * @param clusterCalls stations of a tapped cluster to choose from; empty when none.
  * @param refreshKey changes whenever new station data may have arrived, so the panel stays current.
  * @param onFound the user picked a search result; the host moves the map there.
  */
 @Composable
 fun BoxScope.MapStationLayer(
     selectedCall: String,
+    clusterCalls: List<String>,
     followedCall: String,
-    searchOpen: Boolean,
     refreshKey: Any?,
-    onSearchClose: () -> Unit,
+    filter: StationFilter,
+    counts: StationCounts,
+    onFilter: (StationFilter) -> Unit,
     onFound: (StationEntity) -> Unit,
+    onPick: (String) -> Unit,
     onDismiss: () -> Unit,
     onFollow: (String) -> Unit,
     onStopFollowing: () -> Unit,
 ) {
-    AnimatedVisibility(
-        visible = searchOpen,
-        enter = fadeIn() + slideInVertically { -it },
-        exit = fadeOut() + slideOutVertically { -it },
-        // Leave room for the control stack on the right.
-        modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 12.dp, end = 76.dp),
+    Column(
+        // Leave room for the button column on the right.
+        modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 12.dp, end = 72.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        MapSearch(onClose = onSearchClose, onFound = onFound)
+        MapSearch(onFound = onFound)
+        FilterChips(filter, counts, onFilter)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            StatusPill()
+            if (followedCall.isNotEmpty()) TrackingChip(call = followedCall, onStop = onStopFollowing)
+        }
     }
 
+    val panelOpen = selectedCall.isNotEmpty() || clusterCalls.isNotEmpty()
     AnimatedVisibility(
-        visible = selectedCall.isNotEmpty(),
+        visible = panelOpen,
         enter = slideInVertically { it },
         exit = slideOutVertically { it },
         modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
     ) {
-        // Keep showing the last station while the panel slides away.
+        // Keep showing the last content while the panel slides away.
         var shownCall by remember { mutableStateOf(selectedCall) }
-        if (selectedCall.isNotEmpty()) shownCall = selectedCall
-        StationPanel(
-            call = shownCall,
-            followed = shownCall.isNotEmpty() && shownCall == followedCall,
-            refreshKey = refreshKey,
-            onDismiss = onDismiss,
-            onFollow = { onFollow(shownCall) },
-            onStopFollowing = onStopFollowing,
-        )
+        var shownCluster by remember { mutableStateOf(clusterCalls) }
+        if (panelOpen) {
+            shownCall = selectedCall
+            shownCluster = clusterCalls
+        }
+        if (shownCall.isEmpty() && shownCluster.isNotEmpty()) {
+            ClusterPanel(calls = shownCluster, onPick = onPick, onDismiss = onDismiss)
+        } else {
+            StationPanel(
+                call = shownCall,
+                followed = shownCall.isNotEmpty() && shownCall == followedCall,
+                refreshKey = refreshKey,
+                onDismiss = onDismiss,
+                onFollow = { onFollow(shownCall) },
+                onStopFollowing = onStopFollowing,
+            )
+        }
+    }
+}
+
+/** "All 212 / Mobile 14 / Fixed 198": thin a crowded map with one tap. */
+@Composable
+private fun FilterChips(filter: StationFilter, counts: StationCounts, onFilter: (StationFilter) -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+    ) {
+        FilterChip("All", counts.all, filter == StationFilter.ALL) { onFilter(StationFilter.ALL) }
+        FilterChip("Mobile", counts.mobile, filter == StationFilter.MOBILE) { onFilter(StationFilter.MOBILE) }
+        FilterChip("Fixed", counts.fixed, filter == StationFilter.FIXED) { onFilter(StationFilter.FIXED) }
     }
 }
 
 @Composable
-private fun MapSearch(onClose: () -> Unit, onFound: (StationEntity) -> Unit) {
+private fun FilterChip(label: String, count: Int, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+        shadowElevation = 3.dp,
+        modifier = Modifier
+            .heightIn(min = 40.dp)
+            .clip(RoundedCornerShape(50))
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                count.toString(),
+                style = CallsignStyle.copy(fontSize = 13.sp),
+                color = LocalContentColor.current.copy(alpha = 0.75f),
+            )
+        }
+    }
+}
+
+/** Whether data is flowing, and over what: "APRS-IS, live" or "Not connected". */
+@Composable
+private fun StatusPill() {
     val context = LocalContext.current
+    val running = rememberServiceRunning()
+    val link = remember(running) {
+        when (PrefsWrapper(context).getProto()) {
+            "afsk" -> "Audio modem"
+            "kiss", "tnc2" -> "TNC"
+            "kenwood" -> "Kenwood"
+            else -> "APRS-IS"
+        }
+    }
+    val colors = AprsTheme.colors
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shadowElevation = 3.dp,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.heightIn(min = 36.dp).padding(horizontal = 12.dp),
+        ) {
+            Box(Modifier.size(10.dp).background(if (running) colors.rx else colors.muted, CircleShape))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (running) "$link, live" else "Not connected",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (running) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MapSearch(onFound: (StationEntity) -> Unit) {
+    val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
     var query by remember { mutableStateOf("") }
-    val focus = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focus.requestFocus() }
 
     val results by produceState(emptyList<StationEntity>(), query) {
         val q = query.filter { it.isLetterOrDigit() || it == '-' }
@@ -138,12 +238,17 @@ private fun MapSearch(onClose: () -> Unit, onFound: (StationEntity) -> Unit) {
             }
         }
     }
+    fun pick(sta: StationEntity) {
+        query = ""
+        focusManager.clearFocus()
+        onFound(sta)
+    }
 
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainer,
         shadowElevation = 6.dp,
-        modifier = Modifier.widthIn(max = 420.dp),
+        modifier = Modifier.widthIn(max = 440.dp),
     ) {
         Column {
             TextField(
@@ -154,8 +259,10 @@ private fun MapSearch(onClose: () -> Unit, onFound: (StationEntity) -> Unit) {
                 textStyle = CallsignStyle,
                 leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                 trailingIcon = {
-                    IconButton(onClick = onClose) {
-                        Icon(Icons.Filled.Close, contentDescription = "Close search")
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = ""; focusManager.clearFocus() }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Clear search")
+                        }
                     }
                 },
                 keyboardOptions = KeyboardOptions(
@@ -163,14 +270,14 @@ private fun MapSearch(onClose: () -> Unit, onFound: (StationEntity) -> Unit) {
                     autoCorrectEnabled = false,
                     imeAction = ImeAction.Search,
                 ),
-                keyboardActions = KeyboardActions(onSearch = { results.firstOrNull()?.let(onFound) }),
+                keyboardActions = KeyboardActions(onSearch = { results.firstOrNull()?.let { pick(it) } }),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                 ),
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                modifier = Modifier.fillMaxWidth(),
             )
             if (query.length >= 2 && results.isEmpty()) {
                 HorizontalDivider(color = AprsTheme.colors.line.copy(alpha = 0.45f))
@@ -183,27 +290,65 @@ private fun MapSearch(onClose: () -> Unit, onFound: (StationEntity) -> Unit) {
             }
             for (sta in results) {
                 HorizontalDivider(color = AprsTheme.colors.line.copy(alpha = 0.45f))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onFound(sta) }
-                        .heightIn(min = 52.dp)
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                ) {
-                    SymbolIcon(sta.symbol, 28.dp)
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        sta.call,
-                        style = CallsignStyle,
-                        color = AprsTheme.colors.callsign,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        StationFormat.age(sta.ts),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                StationRow(sta.call, sta.symbol, StationFormat.age(sta.ts)) { pick(sta) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StationRow(call: String, symbol: String?, trailing: String, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .heightIn(min = 52.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        SymbolIcon(symbol, 28.dp)
+        Spacer(Modifier.width(12.dp))
+        Text(call, style = CallsignStyle, color = AprsTheme.colors.callsign, modifier = Modifier.weight(1f))
+        Text(
+            trailing,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** The stations of a small cluster (or several at one spot), to pick one. */
+@Composable
+private fun ClusterPanel(calls: List<String>, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val stations by produceState(emptyList<StationEntity>(), calls) {
+        value = withContext(Dispatchers.IO) {
+            val dao = AprsDatabase.get(context).stationDao()
+            calls.mapNotNull { dao.getStaPosition(it) }.sortedByDescending { it.ts }
+        }
+    }
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shadowElevation = 8.dp,
+        modifier = Modifier.widthIn(max = 520.dp).fillMaxWidth(),
+    ) {
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 4.dp),
+            ) {
+                Text(
+                    "${calls.size} stations here",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Close") }
+            }
+            Column(Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState())) {
+                for (sta in stations) {
+                    HorizontalDivider(color = AprsTheme.colors.line.copy(alpha = 0.45f))
+                    StationRow(sta.call, sta.symbol, StationFormat.age(sta.ts)) { onPick(sta.call) }
                 }
             }
         }

@@ -26,17 +26,32 @@ import org.aprsdroid.app.ui.theme.CallsignStyle
 // The map screens are map-first: the map fills the screen and the few
 // controls float on top of it, so nothing but the tab bar takes map space.
 
-/** A floating stack of map buttons (top-right of the map). */
+/**
+ * The map's buttons: separate round buttons down the right edge, each a
+ * comfortable thumb target. Put [MapButton]s (or menus wrapped in one) inside.
+ */
 @Composable
-fun MapControlStack(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Surface(
+fun MapButtonColumn(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(
         modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+        content = content,
+    )
+}
+
+/** One round floating map button. [content] is usually an IconButton or a menu that brings its own. */
+@Composable
+fun MapButton(content: @Composable () -> Unit) {
+    Surface(
+        shape = androidx.compose.foundation.shape.CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainer,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shadowElevation = 6.dp,
+        shadowElevation = 4.dp,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, content = content)
+        androidx.compose.foundation.layout.Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.size(48.dp),
+        ) { content() }
     }
 }
 

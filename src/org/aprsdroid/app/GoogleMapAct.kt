@@ -17,7 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,9 +43,11 @@ import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.Marker
+import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.Polyline
 import com.google.android.gms.maps.model.PolylineOptions
+import org.aprsdroid.app.ui.MapButton
 import org.aprsdroid.app.ui.MapStationLayer
 import org.aprsdroid.app.ui.AprsBottomBar
 import org.aprsdroid.app.ui.AprsOverflowMenu
@@ -68,7 +71,16 @@ class GoogleMapAct : ComponentActivity() {
 
     private var trackedCall by mutableStateOf("")
     private var selectedCall by mutableStateOf("")
-    private var searchOpen by mutableStateOf(false)
+    private var clusterCalls by mutableStateOf(emptyList<String>())
+    private var stationFilter by mutableStateOf(StationFilter.ALL)
+    private var stationCounts by mutableStateOf(StationCounts(0, 0, 0))
+    /** Stations after the filter, as last loaded; re-clustered whenever the zoom changes. */
+    private var shownStations: List<MapStation> = emptyList()
+    private val clusterMarkers = ArrayList<Marker>()
+    private var clusteredAtZoom = Float.NaN
+
+    /** Tag on a cluster marker: what it stands for. */
+    private class ClusterTag(val calls: List<String>, val lat: Double, val lon: Double)
     private var dataVersion by mutableStateOf(0)
     private var targetcall: String
         get() = trackedCall
@@ -95,6 +107,10 @@ class GoogleMapAct : ComponentActivity() {
 
     companion object {
         private const val CALLSIGN_ZOOM = 8f
+        /** Cluster grid cell, in dp (Google's world is 256 dp per tile). */
+        private const val CLUSTER_CELL_DP = 64f
+        /** Height of the search bar, chips and status row over the map. */
+        private const val TOP_CHROME_DP = 172f
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -135,55 +151,65 @@ class GoogleMapAct : ComponentActivity() {
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
-                if (trackedCall.isNotEmpty() && !searchOpen) {
-                    org.aprsdroid.app.ui.TrackingChip(
-                        call = trackedCall,
-                        onStop = { targetcall = ""; reload() },
-                        modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
-                    )
-                }
-                org.aprsdroid.app.ui.MapControlStack(
+                org.aprsdroid.app.ui.MapButtonColumn(
                     modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
                 ) {
-                    IconButton(onClick = { searchOpen = !searchOpen }) {
-                        Icon(Icons.Filled.Search, contentDescription = "Find a callsign")
-                    }
-                    MapTypeMenu(currentTag = currentModeTag) { mode ->
-                        if (!MapModes.switchTo(this@GoogleMapAct, prefs, mode, targetcall)) {
-                            currentModeTag = mode.tag
-                            (mode as? GoogleMapMode)?.let { map?.mapType = it.mapType }
+                    MapButton {
+                        IconButton(onClick = { map?.animateCamera(CameraUpdateFactory.zoomIn()) }) {
+                            Icon(Icons.Filled.Add, contentDescription = "Zoom in")
                         }
                     }
-                    IconButton(onClick = {
-                        showObjects = prefs.toggleBoolean("show_objects", true)
-                        reload()
-                    }) {
-                        Icon(
-                            if (showObjects) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                            contentDescription = if (showObjects) "Hide objects" else "Show objects",
+                    MapButton {
+                        IconButton(onClick = { map?.animateCamera(CameraUpdateFactory.zoomOut()) }) {
+                            Icon(Icons.Filled.Remove, contentDescription = "Zoom out")
+                        }
+                    }
+                    MapButton {
+                        IconButton(onClick = { centerOnMyLocation() }) {
+                            Icon(Icons.Filled.MyLocation, contentDescription = "Go to my location")
+                        }
+                    }
+                    MapButton {
+                        MapTypeMenu(currentTag = currentModeTag) { mode ->
+                            if (!MapModes.switchTo(this@GoogleMapAct, prefs, mode, targetcall)) {
+                                currentModeTag = mode.tag
+                                (mode as? GoogleMapMode)?.let { applyMode(it) }
+                            }
+                        }
+                    }
+                    MapButton {
+                        IconButton(onClick = {
+                            showObjects = prefs.toggleBoolean("show_objects", true)
+                            reload()
+                        }) {
+                            Icon(
+                                if (showObjects) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                contentDescription = if (showObjects) "Hide objects" else "Show objects",
+                            )
+                        }
+                    }
+                    MapButton {
+                        AprsOverflowMenu(
+                            showAgeFilter = true,
+                            onPreferences = { AprsNavigation.openPreferences(this@GoogleMapAct) },
+                            onAgeChanged = { reload() },
                         )
                     }
-                    IconButton(onClick = { centerOnMyLocation() }) {
-                        Icon(Icons.Filled.MyLocation, contentDescription = "Go to my location")
-                    }
-                    AprsOverflowMenu(
-                        showAgeFilter = true,
-                        onPreferences = { AprsNavigation.openPreferences(this@GoogleMapAct) },
-                        onAgeChanged = { reload() },
-                    )
                 }
-                androidx.activity.compose.BackHandler(enabled = searchOpen || selectedCall.isNotEmpty()) {
-                    searchOpen = false
+                androidx.activity.compose.BackHandler(enabled = selectedCall.isNotEmpty() || clusterCalls.isNotEmpty()) {
+                    clusterCalls = emptyList()
                     selectedCall = ""
                 }
                 MapStationLayer(
                     selectedCall = selectedCall,
+                    clusterCalls = clusterCalls,
                     followedCall = trackedCall,
-                    searchOpen = searchOpen,
                     refreshKey = dataVersion,
-                    onSearchClose = { searchOpen = false },
+                    filter = stationFilter,
+                    counts = stationCounts,
+                    onFilter = { stationFilter = it; reload() },
                     onFound = { sta ->
-                        searchOpen = false
+                        clusterCalls = emptyList()
                         selectedCall = sta.call
                         map?.let { gm ->
                             val zoom = maxOf(gm.cameraPosition.zoom, 13f)
@@ -192,7 +218,8 @@ class GoogleMapAct : ComponentActivity() {
                             )
                         }
                     },
-                    onDismiss = { selectedCall = "" },
+                    onPick = { call -> clusterCalls = emptyList(); selectedCall = call },
+                    onDismiss = { selectedCall = ""; clusterCalls = emptyList() },
                     onFollow = { call -> targetcall = call; reload() },
                     onStopFollowing = { targetcall = ""; reload() },
                 )
@@ -205,24 +232,33 @@ class GoogleMapAct : ComponentActivity() {
 
     private fun onMapReady(googleMap: GoogleMap) {
         map = googleMap
-        (MapModes.defaultMapMode(this, prefs) as? GoogleMapMode)?.let { googleMap.mapType = it.mapType }
+        (MapModes.defaultMapMode(this, prefs) as? GoogleMapMode)?.let { applyMode(it) }
         googleMap.uiSettings.isCompassEnabled = true
-        googleMap.uiSettings.isZoomControlsEnabled = true
+        googleMap.uiSettings.isZoomControlsEnabled = false // our own round buttons instead
+        googleMap.uiSettings.isMapToolbarEnabled = false
+        // Keep the compass and the centre of the map clear of the search bar, chips and status.
+        googleMap.setPadding(0, (TOP_CHROME_DP * resources.displayMetrics.density).toInt(), 0, 0)
         val (pos, zoom) = MapData.loadCamera(this, prefs)
         googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(pos.lat, pos.lon), zoom))
         labelsVisible = googleMap.cameraPosition.zoom > CALLSIGN_ZOOM
         // Tapping a station opens the slide-up panel; the map stays in view.
+        // Tapping a cluster lists its stations or zooms in on it.
         googleMap.setOnMarkerClickListener { m ->
-            (m.tag as? String)?.let { searchOpen = false; selectedCall = it }
-            false
+            when (val tag = m.tag) {
+                is ClusterTag -> openCluster(tag)
+                is String -> { clusterCalls = emptyList(); selectedCall = tag }
+            }
+            true
         }
-        googleMap.setOnInfoWindowClickListener { m -> (m.tag as? String)?.let { selectedCall = it } }
         googleMap.setOnCameraIdleListener {
-            val visible = googleMap.cameraPosition.zoom > CALLSIGN_ZOOM
+            val zoom = googleMap.cameraPosition.zoom
+            val visible = zoom > CALLSIGN_ZOOM
             if (visible != labelsVisible) {
                 labelsVisible = visible
                 for (mi in markers.values) mi.label.isVisible = visible
             }
+            // The cluster grid is fixed to the map, so only a zoom change regroups stations.
+            if (clusteredAtZoom.isNaN() || Math.abs(zoom - clusteredAtZoom) > 0.05f) render()
         }
         startLoading()
     }
@@ -239,38 +275,120 @@ class GoogleMapAct : ComponentActivity() {
         locReceiver.startTask(null)
     }
 
+    private fun applyMode(mode: GoogleMapMode) {
+        val gm = map ?: return
+        gm.mapType = mode.mapType
+        gm.setMapStyle(if (mode.quiet) MapStyleOptions(MapStyles.QUIET_JSON) else null)
+    }
+
+    private fun openCluster(tag: ClusterTag) {
+        val gm = map ?: return
+        val zoom = gm.cameraPosition.zoom
+        if (tag.calls.size <= 6 || zoom >= 17f) {
+            selectedCall = ""
+            clusterCalls = tag.calls
+        } else {
+            gm.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(tag.lat, tag.lon), zoom + 2f))
+        }
+    }
+
+    /** Navy disc with an amber ring and the station count, like the OSM map's clusters. */
+    private fun clusterIcon(count: Int): BitmapDescriptor = icons.getOrPut("cluster:$count") {
+        val density = resources.displayMetrics.density
+        val r = CLUSTER_CELL_DP * density * (0.30f + 0.04f * minOf(count.toString().length, 4))
+        val stroke = drawSize / 10f
+        val size = (2 * (r + stroke)).toInt() + 2
+        val b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val c = Canvas(b)
+        val cx = size / 2f
+        c.drawCircle(cx, cx, r, Paint().apply { color = 0xf01c2f51.toInt(); isAntiAlias = true })
+        c.drawCircle(cx, cx, r, Paint().apply {
+            color = 0xffebcf3a.toInt(); isAntiAlias = true
+            style = Paint.Style.STROKE; strokeWidth = stroke
+        })
+        val text = Paint().apply {
+            color = 0xffffffff.toInt(); isAntiAlias = true
+            textAlign = Paint.Align.CENTER
+            textSize = r * 0.85f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        val fm = text.fontMetrics
+        c.drawText(count.toString(), cx, cx - (fm.ascent + fm.descent) / 2, text)
+        BitmapDescriptorFactory.fromBitmap(b)
+    }
+
     private fun symbolIcon(symbol: String): BitmapDescriptor =
         icons.getOrPut(symbol) { BitmapDescriptorFactory.fromBitmap(AprsSymbols.bitmap(this, symbol, drawSize)) }
 
-    /** Callsign label in the same style as the OSM map (black text, light green halo). */
+    /** Callsign label in the same style as the OSM map: navy text on a light pill. */
     private fun labelBitmap(text: String): Bitmap {
-        val fontSize = drawSize * 7f / 8f
+        val fontSize = drawSize * 0.58f
         val textPaint = Paint().apply {
-            color = 0xff000000.toInt()
+            color = 0xff0d182d.toInt()
             textSize = fontSize
-            typeface = Typeface.MONOSPACE
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             isAntiAlias = true
         }
-        val strokePaint = Paint(textPaint).apply {
-            color = 0xffc8ffc8.toInt()
-            style = Paint.Style.STROKE
-            strokeWidth = drawSize / 6f
-        }
-        val pad = drawSize / 6
-        val w = textPaint.measureText(text).toInt() + 2 * pad
-        val h = (fontSize * 1.3f).toInt() + 2 * pad
-        val b = Bitmap.createBitmap(w.coerceAtLeast(1), h, Bitmap.Config.ARGB_8888)
+        val padX = fontSize * 0.35f
+        val padY = fontSize * 0.18f
+        val fm = textPaint.fontMetrics
+        val textH = fm.descent - fm.ascent
+        val w = (textPaint.measureText(text) + 2 * padX).toInt().coerceAtLeast(1)
+        val h = (textH + 2 * padY).toInt().coerceAtLeast(1)
+        val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(b)
-        val y = pad - textPaint.fontMetrics.ascent
-        c.drawText(text, pad.toFloat(), y, strokePaint)
-        c.drawText(text, pad.toFloat(), y, textPaint)
+        c.drawRoundRect(
+            android.graphics.RectF(0f, 0f, w.toFloat(), h.toFloat()), h / 2f, h / 2f,
+            Paint().apply { color = 0xe6ffffff.toInt(); isAntiAlias = true },
+        )
+        c.drawText(text, padX, padY - fm.ascent, textPaint)
         return b
     }
 
+    /** New data from the loader: remember it, then draw. */
     private fun onStationUpdate(stations: List<MapStation>) {
         dataVersion++
         isLoading = false
+        stationCounts = MapFilters.counts(stations)
+        shownStations = MapFilters.apply(stations, stationFilter, setOf(prefs.getCallSsid(), targetcall))
+        render()
+        followTarget()
+    }
+
+    /**
+     * Draw [shownStations] for the current zoom: stations that would overlap
+     * become cluster markers, the rest keep their own symbol, label and trace.
+     */
+    private fun render() {
         val gm = map ?: return
+        val zoom = gm.cameraPosition.zoom
+        clusteredAtZoom = zoom
+        val mine = prefs.getCallSsid()
+        val groups = MapCluster.cluster(
+            shownStations, zoom.toDouble(), CLUSTER_CELL_DP.toDouble(),
+            { it.pos.lat }, { it.pos.lon },
+            { it.call == targetcall || it.call == mine },
+        )
+
+        for (m in clusterMarkers) m.remove()
+        clusterMarkers.clear()
+        val stations = ArrayList<MapStation>()
+        for (g in groups) {
+            if (!g.isCluster) {
+                stations.add(g.items[0])
+                continue
+            }
+            val marker = gm.addMarker(
+                MarkerOptions()
+                    .position(LatLng(g.lat, g.lon))
+                    .anchor(0.5f, 0.5f)
+                    .zIndex(1f)
+                    .icon(clusterIcon(g.items.size)),
+            ) ?: continue
+            marker.tag = ClusterTag(g.items.map { it.call }, g.lat, g.lon)
+            clusterMarkers.add(marker)
+        }
+
         val seen = HashSet<String>()
         for (sta in stations) {
             seen.add(sta.call)
@@ -294,7 +412,7 @@ class GoogleMapAct : ComponentActivity() {
                 val label = gm.addMarker(
                     MarkerOptions()
                         .position(pos)
-                        .anchor(0.5f, -0.4f)
+                        .anchor(0.5f, -0.9f)
                         .icon(BitmapDescriptorFactory.fromBitmap(labelBitmap(sta.call)))
                         .visible(labelsVisible),
                 ) ?: continue
@@ -310,7 +428,6 @@ class GoogleMapAct : ComponentActivity() {
         for (call in gone) {
             markers.remove(call)?.let { it.icon.remove(); it.label.remove(); it.trace?.remove() }
         }
-        followTarget()
     }
 
     private fun updateTrace(gm: GoogleMap, mi: MarkerInfo, sta: MapStation) {
