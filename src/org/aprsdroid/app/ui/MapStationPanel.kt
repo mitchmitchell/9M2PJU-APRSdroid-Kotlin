@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalContentColor
@@ -34,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -99,6 +101,8 @@ fun BoxScope.MapStationLayer(
     filter: StationFilter,
     counts: StationCounts,
     onFilter: (StationFilter) -> Unit,
+    showObjects: Boolean,
+    onToggleObjects: () -> Unit,
     onFound: (StationEntity) -> Unit,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -111,7 +115,7 @@ fun BoxScope.MapStationLayer(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         MapSearch(onFound = onFound)
-        FilterChips(filter, counts, onFilter)
+        FilterChips(filter, counts, onFilter, showObjects, onToggleObjects)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             StatusPill()
             if (followedCall.isNotEmpty()) TrackingChip(call = followedCall, onStop = onStopFollowing)
@@ -149,7 +153,13 @@ fun BoxScope.MapStationLayer(
 
 /** "All 212 / Mobile 14 / Fixed 198": thin a crowded map with one tap. */
 @Composable
-private fun FilterChips(filter: StationFilter, counts: StationCounts, onFilter: (StationFilter) -> Unit) {
+private fun FilterChips(
+    filter: StationFilter,
+    counts: StationCounts,
+    onFilter: (StationFilter) -> Unit,
+    showObjects: Boolean,
+    onToggleObjects: () -> Unit,
+) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -157,6 +167,7 @@ private fun FilterChips(filter: StationFilter, counts: StationCounts, onFilter: 
         FilterChip("All", counts.all, filter == StationFilter.ALL) { onFilter(StationFilter.ALL) }
         FilterChip("Mobile", counts.mobile, filter == StationFilter.MOBILE) { onFilter(StationFilter.MOBILE) }
         FilterChip("Fixed", counts.fixed, filter == StationFilter.FIXED) { onFilter(StationFilter.FIXED) }
+        ObjectsChip(showObjects, onToggleObjects)
     }
 }
 
@@ -182,6 +193,41 @@ private fun FilterChip(label: String, count: Int, selected: Boolean, onClick: ()
                 count.toString(),
                 style = CallsignStyle.copy(fontSize = 13.sp),
                 color = LocalContentColor.current.copy(alpha = 0.75f),
+            )
+        }
+    }
+}
+
+/**
+ * On/off switch for APRS objects: things other stations place on the map
+ * (repeaters, nets, events, hazards) as opposed to stations reporting themselves.
+ */
+@Composable
+private fun ObjectsChip(shown: Boolean, onToggle: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        contentColor = if (shown) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+        shadowElevation = 3.dp,
+        modifier = Modifier
+            .heightIn(min = 40.dp)
+            .clip(RoundedCornerShape(50))
+            .toggleable(value = shown, role = Role.Switch, onValueChange = { onToggle() }),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 10.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
+        ) {
+            Icon(
+                if (shown) Icons.Filled.Check else Icons.Filled.Close,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                if (shown) "Objects shown" else "Objects hidden",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
             )
         }
     }

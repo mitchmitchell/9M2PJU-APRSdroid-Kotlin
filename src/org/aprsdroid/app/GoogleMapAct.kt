@@ -19,8 +19,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -178,17 +176,6 @@ class GoogleMapAct : ComponentActivity() {
                         }
                     }
                     MapButton {
-                        IconButton(onClick = {
-                            showObjects = prefs.toggleBoolean("show_objects", true)
-                            reload()
-                        }) {
-                            Icon(
-                                if (showObjects) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                                contentDescription = if (showObjects) "Hide objects" else "Show objects",
-                            )
-                        }
-                    }
-                    MapButton {
                         AprsOverflowMenu(
                             showAgeFilter = true,
                             onPreferences = { AprsNavigation.openPreferences(this@GoogleMapAct) },
@@ -208,6 +195,11 @@ class GoogleMapAct : ComponentActivity() {
                     filter = stationFilter,
                     counts = stationCounts,
                     onFilter = { stationFilter = it; reload() },
+                    showObjects = showObjects,
+                    onToggleObjects = {
+                        showObjects = prefs.toggleBoolean("show_objects", true)
+                        reload()
+                    },
                     onFound = { sta ->
                         clusterCalls = emptyList()
                         selectedCall = sta.call
@@ -292,22 +284,22 @@ class GoogleMapAct : ComponentActivity() {
         }
     }
 
-    /** Navy disc with an amber ring and the station count, like the OSM map's clusters. */
+    /** White disc with a navy ring and the station count, like the OSM map's clusters. */
     private fun clusterIcon(count: Int): BitmapDescriptor = icons.getOrPut("cluster:$count") {
         val density = resources.displayMetrics.density
         val r = CLUSTER_CELL_DP * density * (0.30f + 0.04f * minOf(count.toString().length, 4))
-        val stroke = drawSize / 10f
+        val stroke = drawSize / 8f
         val size = (2 * (r + stroke)).toInt() + 2
         val b = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val c = Canvas(b)
         val cx = size / 2f
-        c.drawCircle(cx, cx, r, Paint().apply { color = 0xf01c2f51.toInt(); isAntiAlias = true })
+        c.drawCircle(cx, cx, r, Paint().apply { color = 0xf7ffffff.toInt(); isAntiAlias = true })
         c.drawCircle(cx, cx, r, Paint().apply {
-            color = 0xffebcf3a.toInt(); isAntiAlias = true
+            color = 0xff1c2f51.toInt(); isAntiAlias = true
             style = Paint.Style.STROKE; strokeWidth = stroke
         })
         val text = Paint().apply {
-            color = 0xffffffff.toInt(); isAntiAlias = true
+            color = 0xff0d182d.toInt(); isAntiAlias = true
             textAlign = Paint.Align.CENTER
             textSize = r * 0.85f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)

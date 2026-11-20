@@ -48,8 +48,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Add
@@ -337,19 +335,6 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                             }
                         }
                         MapButton {
-                            IconButton(onClick = {
-                                val newState = prefs.toggleBoolean("show_objects", true)
-                                showObjectsChecked = newState
-                                showObjects = newState
-                                reloadMap()
-                            }) {
-                                Icon(
-                                    if (showObjectsChecked) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                                    contentDescription = if (showObjectsChecked) "Hide objects" else "Show objects",
-                                )
-                            }
-                        }
-                        MapButton {
                             AprsOverflowMenu(
                                 showAgeFilter = true,
                                 onPreferences = { AprsNavigation.openPreferences(this@MapAct) },
@@ -365,6 +350,13 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                         filter = stationFilter,
                         counts = stationCounts,
                         onFilter = { stationFilter = it; reloadMap() },
+                        showObjects = showObjectsChecked,
+                        onToggleObjects = {
+                            val newState = prefs.toggleBoolean("show_objects", true)
+                            showObjectsChecked = newState
+                            showObjects = newState
+                            reloadMap()
+                        },
                         onFound = { sta ->
                             clusterCalls = emptyList()
                             selectedCall = sta.call
@@ -1022,15 +1014,15 @@ class StationOverlay(
             taken.add(Rect(v.x - ss * 3 / 4, v.y - ss * 3 / 4, v.x + ss * 3 / 4, v.y + ss * 3 / 4))
         }
 
-        // 2b. cluster circles: navy disc, amber ring, count
+        // 2b. cluster circles: white disc, navy ring and count
         if (clusters.isNotEmpty()) {
-            val disc = Paint().apply { color = 0xf01c2f51.toInt(); isAntiAlias = true }
+            val disc = Paint().apply { color = 0xf7ffffff.toInt(); isAntiAlias = true }
             val ring = Paint().apply {
-                color = 0xffebcf3a.toInt(); isAntiAlias = true
-                style = Paint.Style.STROKE; strokeWidth = drawSize / 10f
+                color = 0xff1c2f51.toInt(); isAntiAlias = true
+                style = Paint.Style.STROKE; strokeWidth = drawSize / 8f
             }
             val countPaint = Paint().apply {
-                color = 0xffffffff.toInt(); isAntiAlias = true
+                color = 0xff0d182d.toInt(); isAntiAlias = true
                 textAlign = Paint.Align.CENTER
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             }
