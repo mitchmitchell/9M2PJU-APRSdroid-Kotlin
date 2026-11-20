@@ -19,7 +19,6 @@ object AprsBackend {
 
     const val TAG = "AprsBackend"
     const val DEFAULT_CONNTYPE = "tcp"
-    const val DEFAULT_LINK = "tcpip"
     const val DEFAULT_PROTO = "aprsis"
 
     const val PASSCODE_NONE = 0
@@ -149,11 +148,27 @@ object AprsBackend {
     @JvmStatic
     fun defaultProtoInfo(prefs: PrefsWrapper): ProtoInfo = defaultProtoInfo(prefs.getProto())
 
+    /**
+     * The backend used when the user has not touched the "connection type"
+     * choice under a protocol. These must match the defaults shown in
+     * [BackendPrefs]: the settings screen displays them as selected without
+     * storing anything, so a different default here means the app shows one
+     * link (e.g. Bluetooth SPP) and silently connects with another (TCP/IP).
+     *
+     * @param linkKey the preference key holding the choice: "aprsis", "afsk" or "link".
+     */
+    @JvmStatic
+    fun linkDefault(linkKey: String): String = when (linkKey) {
+        "aprsis" -> "tcp"
+        "afsk" -> "vox"
+        else -> "bluetooth"
+    }
+
     @JvmStatic
     fun defaultBackendInfo(prefs: PrefsWrapper): BackendInfo {
         val pi = defaultProtoInfo(prefs)
         val link = if (pi.link.isNotEmpty()) {
-            prefs.getString(pi.link, DEFAULT_LINK)
+            prefs.getString(pi.link, linkDefault(pi.link))
         } else {
             prefs.getProto()
         }
