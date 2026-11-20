@@ -51,7 +51,7 @@ class IgatePrefs : ComponentActivity() {
             summary = getString(R.string.p_igserver_summary),
             dialogTitle = getString(R.string.p_igserver_entry),
             hint = getString(R.string.p_igserver_hint),
-            default = "aprs.hamradio.my",
+            default = "rotate.aprs2.net",
         ),
         PrefItem.EditText(
             key = "p.igfilter",

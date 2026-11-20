@@ -601,6 +601,9 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         }
     }
 
+    /** The followed callsign, for the overlay (drawn first and highlighted). */
+    fun trackedCallForOverlay(): String = trackedCall
+
     /** Called from the overlay on every redraw; debounces attribution lookups. */
     fun onMapRedrawn() {
         if (currentMode() !is GoogleTilesMode) return
@@ -859,40 +862,80 @@ class StationOverlay(
         val mv = context.mapview ?: return
         if (!mv.mapPosition.isValid) return
         Log.d(tag, "draw: symbolSize=$symbolSize drawSize=$drawSize")
-        val fontSize = drawSize * 7 / 8
+        // Labels: navy text on a light pill, readable on any map. Smaller than
+        // the icon so they do not dominate, and dropped where they would cover
+        // another label or icon, so a busy area stays legible. Zoom in to see more.
+        val fontSize = drawSize * 0.58f
         val textPaint = Paint().apply {
-            color = 0xff000000.toInt()
+            color = 0xff0d182d.toInt()
             textAlign = Paint.Align.CENTER
-            textSize = fontSize.toFloat()
-            typeface = Typeface.MONOSPACE
+            textSize = fontSize
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             isAntiAlias = true
         }
-        val strokePaint = Paint(textPaint).apply {
-            color = 0xffc8ffc8.toInt()
-            style = Paint.Style.STROKE
-            strokeWidth = drawSize / 12.0f
-            setShadowLayer(10f, 0f, 0f, 0x80c8ffc8.toInt())
+        val pillPaint = Paint().apply {
+            color = 0xe6ffffff.toInt()
+            isAntiAlias = true
         }
+        val trackedPillPaint = Paint(pillPaint).apply { color = 0xffebcf3a.toInt() }
 
         val p = Point()
         val width = c.width
         val height = c.height
         val ss = drawSize / 2
+        val showDetail = zoom.toInt() >= 10
+        val tracked = context.trackedCallForOverlay()
 
+        // Visible stations, the followed one first so it always gets its label.
+        class Visible(val s: OSMStation, val x: Int, val y: Int)
+        val visible = ArrayList<Visible>()
         for (s in stations) {
             proj.toPixels(s.getPoint(), p)
-            if (p.x >= 0 && p.y >= 0 && p.x < width && p.y < height) {
-                val srcRect = symbol2rect(s.symbol)
-                val destRect = Rect(p.x - ss, p.y - ss, p.x + ss, p.y + ss)
-                if (zoom.toInt() >= 10) {
-                    drawTrace(c, proj, s)
-                    c.drawText(s.call, p.x.toFloat(), (p.y + ss + fontSize).toFloat(), strokePaint)
-                    c.drawText(s.call, p.x.toFloat(), (p.y + ss + fontSize).toFloat(), textPaint)
+            if (p.x >= -ss && p.y >= -ss && p.x < width + ss && p.y < height + ss) {
+                visible.add(Visible(s, p.x, p.y))
+            }
+        }
+        visible.sortByDescending { it.s.call == tracked }
+
+        // 1. traces underneath everything
+        if (showDetail) for (v in visible) drawTrace(c, proj, v.s)
+
+        // 2. icons
+        val taken = ArrayList<Rect>(visible.size * 2)
+        for (v in visible) {
+            val destRect = Rect(v.x - ss, v.y - ss, v.x + ss, v.y + ss)
+            c.drawBitmap(iconbitmap, symbol2rect(v.s.symbol), destRect, null)
+            if (symbolIsOverlayed(v.s.symbol)) {
+                c.drawBitmap(iconbitmap, symbol2rect(v.s.symbol[0].code - 33, 2), destRect, null)
+            }
+            // Icons block labels with a slightly smaller box, so neighbours can still be named.
+            taken.add(Rect(v.x - ss * 3 / 4, v.y - ss * 3 / 4, v.x + ss * 3 / 4, v.y + ss * 3 / 4))
+        }
+
+        // 3. labels, skipping any that would collide
+        if (showDetail) {
+            val padX = fontSize * 0.35f
+            val padY = fontSize * 0.18f
+            val fm = textPaint.fontMetrics
+            val textH = fm.descent - fm.ascent
+            for ((i, v) in visible.withIndex()) {
+                val w = textPaint.measureText(v.s.call)
+                val left = v.x - w / 2 - padX
+                val top = v.y + ss + 2f
+                val box = android.graphics.RectF(left, top, left + w + 2 * padX, top + textH + 2 * padY)
+                val boxI = Rect(box.left.toInt(), box.top.toInt(), box.right.toInt(), box.bottom.toInt())
+                val isTracked = v.s.call == tracked
+                var free = true
+                if (!isTracked) {
+                    for ((j, r) in taken.withIndex()) {
+                        if (j == i) continue // own icon
+                        if (Rect.intersects(r, boxI)) { free = false; break }
+                    }
                 }
-                c.drawBitmap(iconbitmap, srcRect, destRect, null)
-                if (symbolIsOverlayed(s.symbol)) {
-                    c.drawBitmap(iconbitmap, symbol2rect(s.symbol[0].code - 33, 2), destRect, null)
-                }
+                if (!free) continue
+                taken.add(boxI)
+                c.drawRoundRect(box, textH / 2, textH / 2, if (isTracked) trackedPillPaint else pillPaint)
+                c.drawText(v.s.call, v.x.toFloat(), top + padY - fm.ascent, textPaint)
             }
         }
         context.runOnUiThread {

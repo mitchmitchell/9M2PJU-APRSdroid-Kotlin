@@ -121,7 +121,18 @@ object UIHelper {
 
             v.setPadding(leftPad, topPad, rightPad, 0)
 
-            insets
+            // We have just padded for the status bar, so tell the content it is
+            // already handled. Otherwise Compose's top bars pad for it a second
+            // time, leaving an empty band at the top of every screen. Bottom
+            // (navigation bar) and keyboard insets are left for Compose.
+            if (Build.VERSION.SDK_INT >= 30) {
+                WindowInsets.Builder(insets)
+                    .setInsets(WindowInsets.Type.statusBars(), android.graphics.Insets.NONE)
+                    .build()
+            } else {
+                @Suppress("DEPRECATION")
+                insets.replaceSystemWindowInsets(0, 0, 0, bottomPad)
+            }
         }
     }
 }

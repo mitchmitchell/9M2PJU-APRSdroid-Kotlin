@@ -121,7 +121,7 @@ private const val COLLAPSED_LINES = 5
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun PostItem(
+internal fun PostItem(
     post: PostEntity,
     onLongClick: () -> Unit,
 ) {

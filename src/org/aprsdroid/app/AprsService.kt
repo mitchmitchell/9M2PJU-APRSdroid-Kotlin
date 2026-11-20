@@ -504,6 +504,7 @@ class AprsService : Service() {
                     lon = lon,
                     speed = cse?.speed,
                     course = cse?.course,
+                    alt = StationReport.altitudeFromComment(comment)?.let { Math.round(it).toInt() },
                     symbol = sym,
                     comment = comment,
                     origin = if (objectname != null) call else null,

@@ -3,7 +3,6 @@ package org.aprsdroid.app.ui
 import android.content.Intent
 import android.location.Location
 import android.net.Uri
-import android.text.format.DateUtils
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -239,15 +238,6 @@ fun SymbolIcon(symbol: String?, size: Dp, modifier: Modifier = Modifier) {
     Image(bitmap = bitmap, contentDescription = null, modifier = modifier.size(size))
 }
 
-private val COMPASS = arrayOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")
-
-private fun formatDistance(metres: Float, bearing: Float, metric: Boolean): String {
-    val dir = COMPASS[((bearing.toInt() + 22 + 720) % 360) / 45]
-    val d = if (metric) metres / 1000.0 else metres / 1609.344
-    val unit = if (metric) "km" else "mi"
-    return if (d < 100) "%.1f %s %s".format(d, unit, dir) else "%.0f %s %s".format(d, unit, dir)
-}
-
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun StationItem(
@@ -290,10 +280,9 @@ private fun StationItem(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                val detail = listOfNotNull(
-                    sta.qrg?.takeIf { it.isNotBlank() },
-                    sta.comment?.trim()?.takeIf { it.isNotEmpty() },
-                ).joinToString("  ")
+                // The readable part of the comment only: course, altitude, antenna
+                // and telemetry codes are data, shown elsewhere.
+                val detail = remember(sta.comment) { org.aprsdroid.app.AprsComment.clean(sta.comment) }
                 if (detail.isNotEmpty()) {
                     Text(
                         text = detail,
@@ -310,7 +299,7 @@ private fun StationItem(
                     text = when {
                         row.isOwn -> "You"
                         row.distanceM != null && row.bearingDeg != null ->
-                            formatDistance(row.distanceM, row.bearingDeg, metric)
+                            StationFormat.distance(row.distanceM, row.bearingDeg, metric)
                         else -> ""
                     },
                     style = MaterialTheme.typography.bodyMedium,
@@ -318,10 +307,7 @@ private fun StationItem(
                     maxLines = 1,
                 )
                 Text(
-                    text = DateUtils.getRelativeTimeSpanString(
-                        sta.ts, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS,
-                        DateUtils.FORMAT_ABBREV_RELATIVE,
-                    ).toString(),
+                    text = StationFormat.age(sta.ts),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
