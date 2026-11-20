@@ -110,6 +110,10 @@ interface StationDao {
 
     // ---- maintenance ----
 
+    /** Callsign search for the map: newest first. [pattern] is a SQL LIKE pattern. */
+    @Query("SELECT * FROM stations WHERE call LIKE :pattern ORDER BY ts DESC LIMIT :limit")
+    suspend fun searchByCall(pattern: String, limit: Int): List<StationEntity>
+
     @Query("DELETE FROM stations WHERE ts < :ts")
     suspend fun trimOlderThan(ts: Long)
 

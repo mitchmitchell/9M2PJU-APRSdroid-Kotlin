@@ -1,5 +1,6 @@
 package org.aprsdroid.app
 
+import org.aprsdroid.app.ui.MapStationLayer
 import org.aprsdroid.app.ui.AprsBottomBar
 import org.aprsdroid.app.ui.AprsOverflowMenu
 import org.aprsdroid.app.ui.MapTypeMenu
@@ -49,6 +50,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -108,6 +110,11 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     private val db by lazy { AprsDatabase.get(this) }
 
     private var trackedCall by mutableStateOf("")
+    /** Station shown in the slide-up panel ("" = none). */
+    private var selectedCall by mutableStateOf("")
+    private var searchOpen by mutableStateOf(false)
+    /** Bumped on every station reload so the panel refreshes. */
+    private var dataVersion by mutableStateOf(0)
     private var targetcall: String
         get() = trackedCall
         set(v) { trackedCall = v }
@@ -297,7 +304,7 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                 )
 
                 if (!isCoordinateChooser) {
-                    if (targetcall.isNotEmpty()) {
+                    if (targetcall.isNotEmpty() && !searchOpen) {
                         org.aprsdroid.app.ui.TrackingChip(
                             call = targetcall,
                             onStop = { targetcall = "" ; trackedCall = "" ; reloadMap() },
@@ -307,6 +314,9 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                     org.aprsdroid.app.ui.MapControlStack(
                         modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
                     ) {
+                        IconButton(onClick = { searchOpen = !searchOpen }) {
+                            Icon(Icons.Filled.Search, contentDescription = "Find a callsign")
+                        }
                         MapTypeMenu(currentTag = currentModeTag) { mode ->
                             if (!MapModes.switchTo(this@MapAct, prefs, mode, targetcall)) {
                                 currentModeTag = mode.tag
@@ -333,6 +343,24 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                             onAgeChanged = { reloadMap() },
                         )
                     }
+                    MapStationLayer(
+                        selectedCall = selectedCall,
+                        followedCall = trackedCall,
+                        searchOpen = searchOpen,
+                        refreshKey = dataVersion,
+                        onSearchClose = { searchOpen = false },
+                        onFound = { sta ->
+                            searchOpen = false
+                            selectedCall = sta.call
+                            mapview?.let { mv ->
+                                mv.controller.setCenter(GeoPoint(sta.lat, sta.lon))
+                                if (mv.mapPosition.zoomLevel < 12) mv.controller.setZoom(12)
+                            }
+                        },
+                        onDismiss = { selectedCall = "" },
+                        onFollow = { call -> targetcall = call; reloadMap() },
+                        onStopFollowing = { targetcall = ""; reloadMap() },
+                    )
                 }
 
                 // Loading indicator
@@ -639,6 +667,12 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
+            // Back closes search or the station panel before leaving the map.
+            KeyEvent.KEYCODE_BACK -> if (searchOpen || selectedCall.isNotEmpty()) {
+                searchOpen = false
+                selectedCall = ""
+                return true
+            }
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
             KeyEvent.KEYCODE_MEDIA_NEXT -> {
                 changeZoom(+1)
@@ -711,6 +745,7 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     }
 
     internal fun onPostLoad() {
+        dataVersion++
         mapview?.invalidate()
         onStopLoading()
         animateToCall()
@@ -738,8 +773,12 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
         isLoading = false
     }
 
+    /** A station was tapped: show it in the slide-up panel, keeping the map in view. */
     fun openDetails(call: String) {
-        startActivity(Intent(this, StationActivity::class.java).setData(android.net.Uri.parse(call)))
+        runOnUiThread {
+            searchOpen = false
+            selectedCall = call
+        }
     }
 
     /**

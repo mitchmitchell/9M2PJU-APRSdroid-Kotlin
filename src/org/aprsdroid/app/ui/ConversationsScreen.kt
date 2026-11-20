@@ -1,6 +1,7 @@
 package org.aprsdroid.app.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,7 +65,7 @@ fun ConversationsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Conversations") })
+            TopAppBar(title = { Text("Messages") })
         },
         bottomBar = {
             AprsBottomBar(
@@ -74,43 +75,21 @@ fun ConversationsScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            androidx.compose.material3.ExtendedFloatingActionButton(
                 onClick = { showNewDialog = true },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "New conversation")
-            }
+                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                text = { Text("New message", fontWeight = FontWeight.Bold) },
+            )
         },
     ) { padding ->
         if (conversations.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Icon(
-                        Icons.Filled.Person,
-                        contentDescription = null,
-                        modifier = Modifier.padding(8.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                    )
-                    Text(
-                        "No conversations yet",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "Tap + to start a new conversation.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                EmptyState(
+                    title = "No messages yet",
+                    body = "Messages sent to your callsign appear here. Choose New message to write to another station.",
+                )
             }
         } else {
             LazyColumn(
@@ -121,11 +100,10 @@ fun ConversationsScreen(
                 items(conversations) { message ->
                     ConversationItem(
                         message = message,
-                        colors = viewModel.colors,
                         onClick = { onConversationClick(message.call) },
                         onLongClick = { contextMenuCall = message.call },
                     )
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    HorizontalDivider(color = org.aprsdroid.app.ui.theme.AprsTheme.colors.line.copy(alpha = 0.45f))
                 }
             }
         }
@@ -135,11 +113,9 @@ fun ConversationsScreen(
     if (showNewDialog) {
         NewConversationDialog(
             onDismiss = { showNewDialog = false },
-            onConfirm = { call, message ->
+            onConfirm = { call ->
                 showNewDialog = false
                 onConversationClick(call.uppercase().trim())
-                // If message is provided, it will be sent by MessageActivity
-                // via intent extra "message"
             },
         )
     }
@@ -154,16 +130,23 @@ fun ConversationsScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ConversationItem(
     message: MessageEntity,
-    colors: IntArray,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
-    val color = if (message.type < colors.size) colors[message.type] else 0
-    val isUnread = message.type == MessageEntity.TYPE_INCOMING
+    val colors = org.aprsdroid.app.ui.theme.AprsTheme.colors
+    val incoming = message.type == MessageEntity.TYPE_INCOMING
+    // Say plainly who spoke last and, for our own messages, what became of it.
+    val prefix = when (message.type) {
+        MessageEntity.TYPE_INCOMING -> ""
+        MessageEntity.TYPE_OUT_NEW -> "You (sending): "
+        MessageEntity.TYPE_OUT_REJECTED -> "You (rejected): "
+        MessageEntity.TYPE_OUT_ABORTED -> "You (cancelled): "
+        else -> "You: "
+    }
 
     Row(
         modifier = Modifier
@@ -172,53 +155,36 @@ private fun ConversationItem(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Avatar circle with first letter
-        Surface(
-            modifier = Modifier
+        // A lamp marks threads where the other station spoke last.
+        Box(
+            Modifier
                 .padding(end = 12.dp)
-                .size(40.dp),
-            shape = CircleShape,
-            color = if (isUnread) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.surfaceVariant,
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = message.call.firstOrNull()?.toString() ?: "?",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (isUnread) MaterialTheme.colorScheme.onPrimary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-        ) {
+                .size(10.dp)
+                .then(
+                    if (incoming) Modifier.background(colors.rx, CircleShape) else Modifier,
+                ),
+        )
+        Column(Modifier.weight(1f)) {
             Text(
                 text = message.call,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
-                ),
-                color = Color(color),
+                style = org.aprsdroid.app.ui.theme.CallsignStyle,
+                color = colors.callsign,
             )
-            if (!message.text.isNullOrEmpty()) {
-                Text(
-                    text = message.text,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Default,
-                    ),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                )
-            }
+            Text(
+                text = prefix + (message.text ?: ""),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (incoming) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (incoming) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
         }
         Text(
-            text = android.text.format.DateUtils.getRelativeTimeSpanString(
-                System.currentTimeMillis(),
-                message.ts,
-                android.text.format.DateUtils.MINUTE_IN_MILLIS,
-            ).toString(),
+            text = StationFormat.age(message.ts),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 12.dp),
         )
     }
 }
@@ -226,37 +192,28 @@ private fun ConversationItem(
 @Composable
 private fun NewConversationDialog(
     onDismiss: () -> Unit,
-    onConfirm: (String, String) -> Unit,
+    onConfirm: (String) -> Unit,
 ) {
     var callText by remember { mutableStateOf("") }
-    var msgText by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Send message to...") },
+        title = { Text("New message") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = callText,
-                    onValueChange = { callText = it.uppercase() },
-                    label = { Text("Callsign") },
-                    placeholder = { Text("e.g. W1ABC-2") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = msgText,
-                    onValueChange = { msgText = it },
-                    label = { Text("Message (optional)") },
-                    maxLines = 3,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            OutlinedTextField(
+                value = callText,
+                onValueChange = { callText = it.uppercase().trim() },
+                label = { Text("To callsign") },
+                placeholder = { Text("W1ABC-9") },
+                singleLine = true,
+                textStyle = org.aprsdroid.app.ui.theme.CallsignStyle,
+                modifier = Modifier.fillMaxWidth(),
+            )
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(callText, msgText) },
+                onClick = { onConfirm(callText) },
                 enabled = callText.isNotBlank(),
-            ) { Text("Start") }
+            ) { Text("Write message") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Cancel") }

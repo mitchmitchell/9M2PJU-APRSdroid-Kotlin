@@ -52,11 +52,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import org.aprsdroid.app.AprsService
 import org.aprsdroid.app.PrefsWrapper
 import org.aprsdroid.app.R
@@ -93,7 +100,20 @@ fun MessageListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(viewModel.targetCall) },
+                title = {
+                    Text(
+                        viewModel.targetCall,
+                        style = org.aprsdroid.app.ui.theme.CallsignStyle.copy(fontSize = 20.sp),
+                    )
+                },
+                actions = {
+                    TextButton(onClick = {
+                        context.startActivity(
+                            Intent(context, org.aprsdroid.app.StationActivity::class.java)
+                                .putExtra("call", viewModel.targetCall),
+                        )
+                    }) { Text("Station") }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -118,27 +138,11 @@ fun MessageListScreen(
         },
     ) { padding ->
         if (messages.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(
-                        "No messages yet",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "Type a message below to start the conversation.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                EmptyState(
+                    title = "No messages with ${viewModel.targetCall}",
+                    body = "Write one below. It is sent over APRS and retried until the other station confirms it.",
+                )
             }
         } else {
             LazyColumn(
@@ -188,18 +192,17 @@ fun MessageListScreen(
             onDismissRequest = { showStartTracking = false },
             title = { Text("Tracking is not started") },
             text = {
-                Text("Your message has been saved, but APRSdroid is not connected. " +
-                     "Start tracking now to send it?")
+Text("Your message is saved, but the app is not connected. Start tracking to send it?")
             },
             confirmButton = {
                 TextButton(onClick = {
                     showStartTracking = false
                     onStartService()
-                }) { Text("Start Tracking") }
+                }) { Text("Start tracking") }
             },
             dismissButton = {
                 TextButton(onClick = { showStartTracking = false }) {
-                    Text("Cancel")
+                    Text("Not now")
                 }
             },
         )
@@ -215,71 +218,80 @@ private fun MessageBubble(
     numOfRetries: Int,
     onLongClick: () -> Unit,
 ) {
+    val colors = org.aprsdroid.app.ui.theme.AprsTheme.colors
     val isOutgoing = message.type != MessageEntity.TYPE_INCOMING
-    val alignment = if (isOutgoing) Alignment.End else Alignment.Start
-    val bubbleColor = when (message.type) {
-        MessageEntity.TYPE_INCOMING -> MaterialTheme.colorScheme.surfaceVariant
-        MessageEntity.TYPE_OUT_NEW -> MaterialTheme.colorScheme.primaryContainer
-        MessageEntity.TYPE_OUT_ACKED -> MaterialTheme.colorScheme.primary
-        MessageEntity.TYPE_OUT_REJECTED -> MaterialTheme.colorScheme.errorContainer
-        MessageEntity.TYPE_OUT_ABORTED -> MaterialTheme.colorScheme.surfaceVariant
-        else -> MaterialTheme.colorScheme.surfaceVariant
+    val failed = message.type == MessageEntity.TYPE_OUT_REJECTED ||
+        message.type == MessageEntity.TYPE_OUT_ABORTED
+    val bubbleColor = when {
+        !isOutgoing -> MaterialTheme.colorScheme.surfaceContainerHigh
+        failed -> MaterialTheme.colorScheme.surfaceContainer
+        else -> MaterialTheme.colorScheme.primaryContainer
     }
-    val textColor = when (message.type) {
-        MessageEntity.TYPE_OUT_ACKED -> MaterialTheme.colorScheme.onPrimary
-        MessageEntity.TYPE_OUT_NEW -> MaterialTheme.colorScheme.onPrimaryContainer
-        MessageEntity.TYPE_INCOMING -> MaterialTheme.colorScheme.onSurfaceVariant
-        MessageEntity.TYPE_OUT_REJECTED -> MaterialTheme.colorScheme.onErrorContainer
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    val textColor = when {
+        !isOutgoing -> MaterialTheme.colorScheme.onSurface
+        failed -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
+    }
+    // What happened to it, in words. Colour only reinforces.
+    val status = when (message.type) {
+        MessageEntity.TYPE_OUT_NEW ->
+            if (message.retrycnt <= 1) "Sending" else "Sending, try ${message.retrycnt} of $numOfRetries"
+        MessageEntity.TYPE_OUT_ACKED -> "Delivered"
+        MessageEntity.TYPE_OUT_REJECTED -> "Rejected by ${targetCall}"
+        MessageEntity.TYPE_OUT_ABORTED -> "Not delivered"
+        else -> ""
+    }
+    val statusColor = when (message.type) {
+        MessageEntity.TYPE_OUT_ACKED -> colors.rx
+        MessageEntity.TYPE_OUT_REJECTED, MessageEntity.TYPE_OUT_ABORTED -> colors.error
+        else -> colors.muted
     }
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp),
-        horizontalAlignment = alignment,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+        horizontalAlignment = if (isOutgoing) Alignment.End else Alignment.Start,
     ) {
+        val shape = RoundedCornerShape(
+            topStart = 16.dp, topEnd = 16.dp,
+            bottomStart = if (isOutgoing) 16.dp else 4.dp,
+            bottomEnd = if (isOutgoing) 4.dp else 16.dp,
+        )
         Surface(
             color = bubbleColor,
-            shape = RoundedCornerShape(
-                topStart = 16.dp, topEnd = 16.dp,
-                bottomStart = if (isOutgoing) 16.dp else 4.dp,
-                bottomEnd = if (isOutgoing) 4.dp else 16.dp,
-            ),
+            shape = shape,
             modifier = Modifier
-                .widthIn(max = 280.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .widthIn(max = 420.dp)
+                .clip(shape)
                 .combinedClickable(onLongClick = onLongClick) {},
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            ) {
+            Text(
+                text = message.text ?: "",
+                style = MaterialTheme.typography.bodyLarge,
+                color = textColor,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            )
+        }
+        Row(Modifier.padding(horizontal = 6.dp, vertical = 2.dp)) {
+            if (status.isNotEmpty()) {
                 Text(
-                    text = message.text ?: "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = textColor,
+                    text = "$status. ",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = statusColor,
                 )
-                // Status line
-                val statusText = when (message.type) {
-                    MessageEntity.TYPE_OUT_NEW -> "sending ${message.retrycnt}/$numOfRetries"
-                    MessageEntity.TYPE_OUT_ACKED -> "delivered"
-                    MessageEntity.TYPE_OUT_REJECTED -> "rejected"
-                    MessageEntity.TYPE_OUT_ABORTED -> "aborted"
-                    else -> ""
-                }
-                if (statusText.isNotEmpty()) {
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = textColor.copy(alpha = 0.7f),
-                    )
-                }
             }
+            Text(
+                text = StationFormat.age(message.ts),
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.muted,
+            )
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** APRS messages carry at most 67 characters. */
+private const val MAX_MESSAGE_LENGTH = 67
+
 @Composable
 private fun MessageInputBar(
     text: String,
@@ -287,35 +299,35 @@ private fun MessageInputBar(
     onSend: () -> Unit,
 ) {
     Surface(
-        tonalElevation = 3.dp,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp),
+                .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             OutlinedTextField(
                 value = text,
-                onValueChange = onTextChange,
+                onValueChange = { onTextChange(it.take(MAX_MESSAGE_LENGTH)) },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Message...") },
+                placeholder = { Text("Message") },
+                supportingText = {
+                    val left = MAX_MESSAGE_LENGTH - text.length
+                    if (left <= 20) Text("$left characters left")
+                },
+                shape = RoundedCornerShape(14.dp),
                 maxLines = 3,
             )
             Spacer(modifier = Modifier.width(8.dp))
-            IconButton(
+            androidx.compose.material3.FilledIconButton(
                 onClick = onSend,
                 enabled = text.isNotBlank(),
+                modifier = Modifier.size(52.dp),
             ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
-                    tint = if (text.isNotBlank())
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                )
+                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
             }
         }
     }
@@ -340,13 +352,13 @@ private fun MessageContextMenu(
         )
         if (message.type == MessageEntity.TYPE_OUT_NEW) {
             DropdownMenuItem(
-                text = { Text("Abort") },
+                text = { Text("Stop sending") },
                 onClick = { expanded = false; onDismiss(); onAbort() },
             )
         }
         if (message.type != MessageEntity.TYPE_INCOMING) {
             DropdownMenuItem(
-                text = { Text("Resend") },
+                text = { Text("Send again") },
                 onClick = { expanded = false; onDismiss(); onResend() },
             )
         }

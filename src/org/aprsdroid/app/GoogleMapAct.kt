@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,6 +45,7 @@ import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.gms.maps.model.Polyline
 import com.google.android.gms.maps.model.PolylineOptions
+import org.aprsdroid.app.ui.MapStationLayer
 import org.aprsdroid.app.ui.AprsBottomBar
 import org.aprsdroid.app.ui.AprsOverflowMenu
 import org.aprsdroid.app.ui.MapTypeMenu
@@ -65,6 +67,9 @@ class GoogleMapAct : ComponentActivity() {
     private var map: GoogleMap? = null
 
     private var trackedCall by mutableStateOf("")
+    private var selectedCall by mutableStateOf("")
+    private var searchOpen by mutableStateOf(false)
+    private var dataVersion by mutableStateOf(0)
     private var targetcall: String
         get() = trackedCall
         set(v) { trackedCall = v }
@@ -130,7 +135,7 @@ class GoogleMapAct : ComponentActivity() {
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
                 AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
-                if (trackedCall.isNotEmpty()) {
+                if (trackedCall.isNotEmpty() && !searchOpen) {
                     org.aprsdroid.app.ui.TrackingChip(
                         call = trackedCall,
                         onStop = { targetcall = ""; reload() },
@@ -140,6 +145,9 @@ class GoogleMapAct : ComponentActivity() {
                 org.aprsdroid.app.ui.MapControlStack(
                     modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
                 ) {
+                    IconButton(onClick = { searchOpen = !searchOpen }) {
+                        Icon(Icons.Filled.Search, contentDescription = "Find a callsign")
+                    }
                     MapTypeMenu(currentTag = currentModeTag) { mode ->
                         if (!MapModes.switchTo(this@GoogleMapAct, prefs, mode, targetcall)) {
                             currentModeTag = mode.tag
@@ -164,6 +172,30 @@ class GoogleMapAct : ComponentActivity() {
                         onAgeChanged = { reload() },
                     )
                 }
+                androidx.activity.compose.BackHandler(enabled = searchOpen || selectedCall.isNotEmpty()) {
+                    searchOpen = false
+                    selectedCall = ""
+                }
+                MapStationLayer(
+                    selectedCall = selectedCall,
+                    followedCall = trackedCall,
+                    searchOpen = searchOpen,
+                    refreshKey = dataVersion,
+                    onSearchClose = { searchOpen = false },
+                    onFound = { sta ->
+                        searchOpen = false
+                        selectedCall = sta.call
+                        map?.let { gm ->
+                            val zoom = maxOf(gm.cameraPosition.zoom, 13f)
+                            gm.animateCamera(
+                                CameraUpdateFactory.newLatLngZoom(LatLng(sta.lat / 1e6, sta.lon / 1e6), zoom),
+                            )
+                        }
+                    },
+                    onDismiss = { selectedCall = "" },
+                    onFollow = { call -> targetcall = call; reload() },
+                    onStopFollowing = { targetcall = ""; reload() },
+                )
                 if (isLoading) {
                     CircularProgressIndicator(Modifier.align(Alignment.Center))
                 }
@@ -179,7 +211,12 @@ class GoogleMapAct : ComponentActivity() {
         val (pos, zoom) = MapData.loadCamera(this, prefs)
         googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(LatLng(pos.lat, pos.lon), zoom))
         labelsVisible = googleMap.cameraPosition.zoom > CALLSIGN_ZOOM
-        googleMap.setOnInfoWindowClickListener { m -> (m.tag as? String)?.let { openDetails(it) } }
+        // Tapping a station opens the slide-up panel; the map stays in view.
+        googleMap.setOnMarkerClickListener { m ->
+            (m.tag as? String)?.let { searchOpen = false; selectedCall = it }
+            false
+        }
+        googleMap.setOnInfoWindowClickListener { m -> (m.tag as? String)?.let { selectedCall = it } }
         googleMap.setOnCameraIdleListener {
             val visible = googleMap.cameraPosition.zoom > CALLSIGN_ZOOM
             if (visible != labelsVisible) {
@@ -231,6 +268,7 @@ class GoogleMapAct : ComponentActivity() {
     }
 
     private fun onStationUpdate(stations: List<MapStation>) {
+        dataVersion++
         isLoading = false
         val gm = map ?: return
         val seen = HashSet<String>()
