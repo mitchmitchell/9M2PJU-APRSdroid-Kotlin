@@ -21,3 +21,8 @@ AGENTS.md
 release.keystore
 release.keystore.b64
 .kotlin/
+
+# Signing keys must never be committed (test fixtures under test/ are throwaway)
+/*.p12
+/*.pfx
+*.p12.b64

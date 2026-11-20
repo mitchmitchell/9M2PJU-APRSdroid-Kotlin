@@ -140,16 +140,16 @@ android {
     //   signing.keyPassword=...          (usually the same as storePassword)
     // When set, BOTH debug and release builds use it, so the Google Maps key
     // only needs this one SHA-1 and debug/release install over each other.
-    def p12File = localProp('signing.storeFile')
+    def p12File = localProp('signing.storeFile', 'SIGNING_STORE_FILE')
     if (!p12File.isEmpty()) {
         signingConfigs {
             p12 {
                 storeFile file(p12File)
                 storeType p12File.toLowerCase().endsWith('.jks') ? 'jks' : 'pkcs12'
-                storePassword localProp('signing.storePassword')
-                keyAlias localProp('signing.keyAlias')
-                def kp = localProp('signing.keyPassword')
-                keyPassword kp.isEmpty() ? localProp('signing.storePassword') : kp
+                storePassword localProp('signing.storePassword', 'SIGNING_STORE_PASSWORD')
+                keyAlias localProp('signing.keyAlias', 'SIGNING_KEY_ALIAS')
+                def kp = localProp('signing.keyPassword', 'SIGNING_KEY_PASSWORD')
+                keyPassword kp.isEmpty() ? localProp('signing.storePassword', 'SIGNING_STORE_PASSWORD') : kp
                 enableV1Signing true
                 enableV2Signing true
             }
