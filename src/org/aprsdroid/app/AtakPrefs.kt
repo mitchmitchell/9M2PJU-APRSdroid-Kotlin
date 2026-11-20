@@ -182,9 +182,56 @@ class AtakPrefs : ComponentActivity() {
             key = "atak.cot_type",
             title = getString(R.string.p_atak_cot_type),
             summary = getString(R.string.p_atak_cot_type_summary),
-            default = "a-f-G-I-U-T-r",
+            default = "a-f-G-U-C",
+        ))
+
+        items.add(PrefItem.Category(getString(R.string.p_atak_icons_cat)))
+        items.add(PrefItem.Switch(
+            key = "atak.icons",
+            title = getString(R.string.p_atak_icons),
+            summary = getString(R.string.p_atak_icons_summary),
+            default = true,
+        ))
+        items.add(PrefItem.Clickable(
+            title = getString(R.string.p_atak_iconset_export),
+            summary = getString(R.string.p_atak_iconset_export_summary),
+            onClick = { exportIconset() },
+        ))
+        items.add(PrefItem.EditText(
+            key = "atak.iconset_uid",
+            title = getString(R.string.p_atak_iconset_uid),
+            summary = getString(R.string.p_atak_iconset_uid_summary),
+            default = org.aprsdroid.app.export.AprsIconset.DEFAULT_UID,
+            dependency = "atak.icons",
         ))
         return items
+    }
+
+    /** Build the APRS iconset data package from the app's own symbol sheet and hand it to ATAK. */
+    private fun exportIconset() {
+        Thread {
+            try {
+                val uid = PrefsWrapper(this).getString("atak.iconset_uid", org.aprsdroid.app.export.AprsIconset.DEFAULT_UID)
+                    .trim().ifEmpty { org.aprsdroid.app.export.AprsIconset.DEFAULT_UID }
+                val file = java.io.File(UIHelper.getExportDirectory(this), "APRS-Icons.zip")
+                val sheet = AprsSymbols.sheet(this)
+                val cell = sheet.width / 16
+                file.outputStream().use { out ->
+                    org.aprsdroid.app.export.AprsIconset.writeZip(out, uid) { table, index ->
+                        val r = AprsSymbols.rect(index, table, cell)
+                        val bmp = android.graphics.Bitmap.createBitmap(sheet, r.left, r.top, cell, cell)
+                        val bytes = java.io.ByteArrayOutputStream()
+                        bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes)
+                        bytes.toByteArray()
+                    }
+                }
+                runOnUiThread { UIHelper.shareFile(this, file, file.name, "application/zip") }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, getString(R.string.p_atak_iconset_export_fail, e.message ?: e.toString()), Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     private fun askPassword(uri: android.net.Uri) {

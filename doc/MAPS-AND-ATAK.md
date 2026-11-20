@@ -64,9 +64,17 @@ objects, items) is sent as Cursor-on-Target. Changes apply immediately.
   used to verify the server, so a private CA (e.g. OpenXPKI) works without
   being globally trusted. The server's host name is checked against its
   certificate unless switched off. Plain TCP (8087) is available for testing.
-- **Defaults match stock aprscot** (UID `APRS.<call>`, contact
-  `<call> (APRS)`, type `a-f-G-I-U-T-r`, 60 min stale), so a station seen by
-  both aprscot (APRS-IS) and APRSdroid (RF) is one marker in ATAK.
-- Each event carries `<__aprs symbol=".." source="rf|aprs-is" origin=".."/>`
-  in its detail for ATAK plugins. APRS-symbol icons (`usericon` from an
-  iconset) are not wired up yet.
+- **Defaults match the aprscot gateway on the TAK Server** (UID
+  `APRS.<call>`, contact `<call> (APRS)`, one type `a-f-G-U-C`, 60 min
+  stale), so a station seen by both aprscot (APRS-IS) and APRSdroid (RF) is
+  one marker in ATAK. APRSdroid also sends real course and speed.
+- **APRS icons and the "APRS" overlay:** each event carries
+  `<usericon iconsetpath="<uid>/APRS/tableN_symbol_NN.png"/>`, the same
+  scheme as the gateway (GrokAPRS). ATAK draws the APRS symbol from the
+  "APRS" iconset and groups every station under one toggleable "APRS"
+  overlay, named after the group segment of the path. The symbol is never
+  encoded in the CoT type. If ATAK does not already have the iconset from
+  the TAK Server, "Send the APRS iconset to ATAK" builds the same package
+  (same UID, group and file names) from the app's own symbol sheet.
+- Each event also carries `<__aprs symbol=".." source="rf|aprs-is"
+  origin=".."/>` in its detail for ATAK plugins.

@@ -284,7 +284,15 @@
 <string name="p_atak_uid_prefix_summary">\"APRS.\" matches aprscot, so both feeds update the same marker</string>
 <string name="p_atak_name_suffix">Callsign suffix</string>
 <string name="p_atak_cot_type">CoT type</string>
-<string name="p_atak_cot_type_summary">Marker type for all stations (aprscot default: a-f-G-I-U-T-r)</string>
+<string name="p_atak_cot_type_summary">One marker type for all stations. The APRS symbol comes from the icon, not the type. Keep the same value as your aprscot gateway.</string>
+<string name="p_atak_icons_cat">APRS icons</string>
+<string name="p_atak_icons">Send APRS symbol icons</string>
+<string name="p_atak_icons_summary">Each station is drawn with its APRS symbol and grouped in ATAK\'s \"APRS\" overlay. Needs the APRS iconset in ATAK.</string>
+<string name="p_atak_iconset_export">Send the APRS iconset to ATAK</string>
+<string name="p_atak_iconset_export_summary">Only needed if ATAK does not already have it from your TAK Server. Choose ATAK (Import) in the share list.</string>
+<string name="p_atak_iconset_export_fail">Could not build the iconset: %s</string>
+<string name="p_atak_iconset_uid">Iconset UID</string>
+<string name="p_atak_iconset_uid_summary">Must match the iconset installed in ATAK</string>
 <string name="p_gmaps_sdk_off">Built without mapsApiKey: \"Google:\" SDK map types hidden.</string>
 
 <!-- map view -->

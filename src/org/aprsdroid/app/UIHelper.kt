@@ -50,10 +50,11 @@ object UIHelper {
      * Share a file via Android's share sheet (ACTION_SEND).
      */
     @JvmStatic
-    fun shareFile(ctx: Context, file: File, filename: String) {
+    @JvmOverloads
+    fun shareFile(ctx: Context, file: File, filename: String, mimeType: String = "text/plain") {
         val uri = FileProvider.getUriForFile(ctx, "org.aprsdroid.fileprovider", file)
         val send = Intent(Intent.ACTION_SEND)
-            .setType("text/plain")
+            .setType(mimeType)
             .putExtra(Intent.EXTRA_STREAM, uri)
             .putExtra(Intent.EXTRA_SUBJECT, filename)
             // Without the grant flag (and ClipData, which carries the grant

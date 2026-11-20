@@ -48,23 +48,27 @@ data class StationReport(
 }
 
 /**
- * CoT output settings. Defaults match stock aprscot (UID `APRS.<call>`,
- * contact `<call> (APRS)`, type `a-f-G-I-U-T-r`, one hour stale) so markers
- * from APRSdroid and from aprscot on the TAK server merge instead of
- * duplicating.
+ * CoT output settings. Defaults match the aprscot gateway on the TAK
+ * Server (UID `APRS.<call>`, contact `<call> (APRS)`, one uniform type
+ * `a-f-G-U-C`, one hour stale, icon from the "APRS" iconset) so a station
+ * heard by both is one marker with one icon, in the one "APRS" overlay.
+ *
+ * The APRS symbol is carried only by the `usericon` path, never by the
+ * CoT type: varying the type just yields generic markers in ATAK.
  */
 data class CotConfig(
     val uidPrefix: String = "APRS.",
     val nameSuffix: String = " (APRS)",
-    val cotType: String = "a-f-G-I-U-T-r",
+    val cotType: String = DEFAULT_COT_TYPE,
     val how: String = "m-g",
     val staleSeconds: Long = 3600,
-    /**
-     * Maps an APRS symbol to an ATAK `usericon` iconsetpath, or null for none.
-     * Filled in once the APRS iconset layout from the TAK server is known.
-     */
-    val iconPath: ((String) -> String?)? = null,
-)
+    /** Maps an APRS symbol to an ATAK `usericon` iconsetpath; null sends no icon. */
+    val iconPath: ((String) -> String?)? = { AprsIconset.iconPath(it) },
+) {
+    companion object {
+        const val DEFAULT_COT_TYPE = "a-f-G-U-C"
+    }
+}
 
 /** Builds Cursor-on-Target XML events from [StationReport]s. */
 object CotEncoder {

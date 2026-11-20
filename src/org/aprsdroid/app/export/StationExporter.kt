@@ -117,8 +117,14 @@ class StationExporter(
         cotConfig = CotConfig(
             uidPrefix = prefs.getString("atak.uid_prefix", "APRS."),
             nameSuffix = prefs.getString("atak.name_suffix", " (APRS)"),
-            cotType = prefs.getString("atak.cot_type", "a-f-G-I-U-T-r").ifBlank { "a-f-G-I-U-T-r" },
+            cotType = prefs.getString("atak.cot_type", CotConfig.DEFAULT_COT_TYPE)
+                .ifBlank { CotConfig.DEFAULT_COT_TYPE },
             staleSeconds = prefs.getStringInt("atak.stale_min", 60).coerceAtLeast(1) * 60L,
+            iconPath = if (prefs.getBoolean("atak.icons", true)) {
+                val uid = prefs.getString("atak.iconset_uid", AprsIconset.DEFAULT_UID)
+                    .trim().ifEmpty { AprsIconset.DEFAULT_UID };
+                { symbol -> AprsIconset.iconPath(symbol, uid) }
+            } else null,
         )
         filters = Filters(
             includeOwn = prefs.getBoolean("atak.include_own", false),

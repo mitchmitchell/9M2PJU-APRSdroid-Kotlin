@@ -25,11 +25,11 @@ class CotEncoderTest {
     )
 
     @Test
-    fun defaultsMatchStockAprscot() {
+    fun defaultsMatchTheAprscotGateway() {
         val ev = parse(CotEncoder.encode(base, CotConfig(), t0))
         assertEquals("event", ev.tagName)
         assertEquals("APRS.AE5HO-9", ev.getAttribute("uid"))
-        assertEquals("a-f-G-I-U-T-r", ev.getAttribute("type"))
+        assertEquals("a-f-G-U-C", ev.getAttribute("type"))
         assertEquals("m-g", ev.getAttribute("how"))
         assertEquals("2025-11-19T20:00:00.000Z", ev.getAttribute("time"))
         assertEquals("2025-11-19T21:00:00.000Z", ev.getAttribute("stale"))
@@ -42,7 +42,12 @@ class CotEncoderTest {
         // No course/speed known -> no track element; no comment -> no remarks.
         assertNull(child(ev, "track"))
         assertNull(child(ev, "remarks"))
-        assertNull(child(ev, "usericon"))
+        // Car "/>" -> index 29 in the primary table, exactly as the gateway's patch computes it.
+        assertEquals(
+            "9c9f2b11-0d60-4f6c-a001-aprsiconset-v3/APRS/table0_symbol_29.png",
+            child(ev, "usericon")!!.getAttribute("iconsetpath"),
+        )
+        assertNull(child(parse(CotEncoder.encode(base, CotConfig(iconPath = null), t0)), "usericon"))
         val aprs = child(ev, "__aprs")!!
         assertEquals("/>", aprs.getAttribute("symbol"))
         assertEquals("rf", aprs.getAttribute("source"))
