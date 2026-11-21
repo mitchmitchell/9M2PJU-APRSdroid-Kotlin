@@ -127,6 +127,9 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard.cfg'
         }
         release {
+            // Phones and tablets only; leaving out the emulator (x86) copies of
+            // the map engine keeps the download about 23 MB smaller.
+            ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' }
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard.cfg'
         }
@@ -237,6 +240,11 @@ dependencies {
     // the Google Maps SDK renders in GoogleMapAct and is only offered when a
     // build-time mapsApiKey is set and Play services are present.
     implementation 'com.google.android.gms:play-services-maps:19.0.0'
+
+    // MapLibre renders the OpenStreetMap and vector map types (smooth zoom,
+    // rotation, saved areas for offline use). BSD-2-Clause.
+    implementation 'org.maplibre.gl:android-sdk:11.8.0'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 
     // OkIO (used by APRS protocol)
     implementation 'com.squareup.okio:okio:3.9.0'
