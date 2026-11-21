@@ -106,4 +106,12 @@
 <path d="M568.0 500.0 L548.0 499.0 L556.4 483.7 z" fill="#EBCF3A"/>
 <path d="M1032 500 Q1089.0 470.0 1146 500" fill="none" stroke="#EBCF3A" stroke-width="5" stroke-dasharray="4 14" stroke-linecap="round"/>
 <path d="M1146.0 500.0 L1126.0 499.3 L1134.1 483.9 z" fill="#EBCF3A"/>
+
+<!-- the same station on both sides: leaving the radio, arriving on the TAK map -->
+<path d="M456 444 l17 17 l-17 17 l-17 -17 z" fill="#EBCF3A" stroke="#0D182D" stroke-width="3"/>
+<text x="456" y="424" text-anchor="middle" font-family="DejaVu Sans Mono" font-weight="bold" font-size="25" fill="#EBCF3A">N0CALL-9</text>
+<text x="1352" y="447" text-anchor="end" font-family="DejaVu Sans Mono" font-weight="bold" font-size="23" fill="#EBCF3A" stroke="#1C2F51" stroke-width="6" paint-order="stroke" stroke-linejoin="round">N0CALL-9</text>
+<!-- labels -->
+<text x="250" y="722" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="40" letter-spacing="2" fill="#F2F5FA">Radio</text>
+<text x="1330" y="682" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="40" letter-spacing="2" fill="#F2F5FA">TAK</text>
 </svg>

@@ -122,7 +122,7 @@ fun SplashScreen() {
             }
         } else {
             Column(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
