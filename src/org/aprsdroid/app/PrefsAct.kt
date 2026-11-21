@@ -186,6 +186,12 @@ class PrefsAct : ComponentActivity() {
             onChanged = { recreate() },
         ))
 
+        items.add(PrefItem.Clickable(
+            title = "Alerts",
+            summary = "Stations coming on the air, moving or coming near, and weather warnings",
+            onClick = { startActivity(Intent(this, AlertPrefs::class.java)) },
+        ))
+
         // ---- ATAK / TAK export ----
         items.add(PrefItem.Clickable(
             title = getString(R.string.p__atak),

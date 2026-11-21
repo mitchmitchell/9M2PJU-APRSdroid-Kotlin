@@ -149,3 +149,22 @@ appear with or without a base map.
 The Google Map Tiles types and the position chooser still use the old
 Mapsforge screen, which also remains selectable as *OpenStreetMap (old map
 screen)* in case the new one misbehaves on a device.
+
+## Alerts
+
+Settings → Alerts. They run while tracking is on (the service that receives
+packets does the watching) and arrive as normal notifications on their own
+channel, so sound and vibration are set in Android's notification settings.
+
+- **Stations I watch**: a list of callsigns. You can be told when one comes
+  on the air after 30 minutes of silence, and when one starts moving (300 m
+  from where it sat; at most every 15 minutes while it keeps going).
+- **Stations near me**: when a station comes within a distance of the phone,
+  or of a fixed latitude/longitude. Watched stations by default; optionally
+  any station on the move. A station must leave (20% past the edge) before
+  it can alert again.
+- **Weather warnings**: active alerts from the US National Weather Service
+  (`api.weather.gov`) for the same position, checked every 10 minutes, each
+  shown once. US only; needs an internet connection.
+
+Tapping a station alert opens that station's page.
