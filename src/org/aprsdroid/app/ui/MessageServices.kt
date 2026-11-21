@@ -15,6 +15,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.platform.LocalContext
+import org.aprsdroid.app.PrefsWrapper
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -98,9 +103,15 @@ fun ServiceCards(onOpen: (AprsServices.Service) -> Unit) {
 }
 
 /**
- * What a service can do. Commands with nothing to fill in are sent at once;
- * the others open a form. [onSent] is called with the service callsign after
- * a message has been queued, so the host can open that conversation.
+ * Compose a message to a service by filling in a form. The service's
+ * callsign and its command words are filled in by the app; the user only
+ * supplies their own details (an address, a phone number, the text).
+ *
+ * The first thing a service does is selected to begin with, so the form is
+ * ready to type into; the other things it can do are one tap away. Details
+ * such as a phone number are remembered for next time.
+ *
+ * @param onSend called with the service callsign and the finished message text
  */
 @Composable
 fun ServiceDialog(
@@ -108,75 +119,74 @@ fun ServiceDialog(
     onDismiss: () -> Unit,
     onSend: (callsign: String, text: String) -> Unit,
 ) {
-    var action by remember(service) { mutableStateOf<AprsServices.Action?>(null) }
-    val current = action
-    if (current != null) {
-        ActionForm(service, current, onBack = { action = null }, onSend = { onSend(service.callsign, it) })
-        return
+    val context = LocalContext.current
+    val prefs = remember { PrefsWrapper(context).prefs }
+    var index by remember(service) { mutableIntStateOf(0) }
+    val action = service.actions[index]
+    val values = remember(service) { mutableStateMapOf<String, String>() }
+
+    fun memoryKey(f: AprsServices.Field) = "service.${service.callsign}.${f.key}"
+    // Fill in what was used last time, for fields the user has not touched yet.
+    for (f in action.fields) {
+        if (f.remembered && f.key !in values) {
+            prefs.getString(memoryKey(f), "")?.takeIf { it.isNotEmpty() }?.let { values[f.key] = it }
+        }
     }
+
+    val problem = action.problem(values)
+    val preview = action.build(values)
+    val left = AprsServices.MAX_LENGTH - preview.length
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(service.title) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text(service.summary, style = MaterialTheme.typography.bodyMedium)
-                service.note?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
-                for (a in service.actions) {
-                    HorizontalDivider(color = AprsTheme.colors.line.copy(alpha = 0.45f))
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                if (a.fields.isEmpty()) onSend(service.callsign, a.build(emptyMap())) else action = a
-                            }
-                            .heightIn(min = 56.dp)
-                            .padding(vertical = 8.dp),
+                // What do you want to do?
+                if (service.actions.size > 1) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.horizontalScroll(rememberScrollState()).padding(bottom = 10.dp),
                     ) {
-                        Text(a.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                        Text(
-                            a.explain,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        service.actions.forEachIndexed { i, a ->
+                            FilterChip(
+                                selected = i == index,
+                                onClick = { index = i },
+                                label = { Text(a.label) },
+                            )
+                        }
                     }
                 }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-    )
-}
-
-@Composable
-private fun ActionForm(
-    service: AprsServices.Service,
-    action: AprsServices.Action,
-    onBack: () -> Unit,
-    onSend: (String) -> Unit,
-) {
-    val values = remember(action) { mutableStateMapOf<String, String>() }
-    val problem = action.problem(values)
-    val preview = action.build(values)
-    AlertDialog(
-        onDismissRequest = onBack,
-        title = { Text(action.label) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(action.explain, style = MaterialTheme.typography.bodyMedium)
+
+                // The address is always filled in.
+                OutlinedTextField(
+                    value = service.callsign,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Send to") },
+                    textStyle = CallsignStyle,
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                )
                 for (f in action.fields) {
+                    val isMessage = f.key == "msg"
                     OutlinedTextField(
                         value = values[f.key].orEmpty(),
                         onValueChange = { values[f.key] = if (f.upper) it.uppercase() else it },
                         label = { Text(f.label) },
                         placeholder = { if (f.hint.isNotEmpty()) Text(f.hint) },
-                        singleLine = f.key != "msg",
+                        singleLine = !isMessage,
+                        minLines = if (isMessage) 2 else 1,
+                        supportingText = if (isMessage) {
+                            {
+                                Text(
+                                    if (left >= 0) "$left characters left" else "Too long by ${-left} characters",
+                                    color = if (left >= 0) MaterialTheme.colorScheme.onSurfaceVariant
+                                    else AprsTheme.colors.error,
+                                )
+                            }
+                        } else null,
                         keyboardOptions = KeyboardOptions(
                             keyboardType = when {
                                 f.digitsOnly -> KeyboardType.Phone
@@ -184,32 +194,47 @@ private fun ActionForm(
                                 else -> KeyboardType.Text
                             },
                             capitalization = if (f.upper) KeyboardCapitalization.Characters
-                            else if (f.key == "msg") KeyboardCapitalization.Sentences else KeyboardCapitalization.None,
+                            else if (isMessage) KeyboardCapitalization.Sentences else KeyboardCapitalization.None,
                         ),
                         modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
                     )
                 }
-                // Show exactly what goes on the air, so nothing is hidden and the syntax can be learned.
-                Text(
-                    "Sends to ${service.callsign}:",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 14.dp),
-                )
-                Text(preview.ifEmpty { " " }, style = PacketStyle)
-                val left = AprsServices.MAX_LENGTH - preview.length
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                service.note?.let {
                     Text(
-                        if (left >= 0) "$left characters left" else problem.orEmpty(),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (left >= 0) MaterialTheme.colorScheme.onSurfaceVariant else AprsTheme.colors.error,
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 12.dp),
                     )
+                }
+                // Exactly what goes on the air: nothing hidden, and the syntax can be picked up along the way.
+                if (preview.isNotEmpty()) {
+                    Text(
+                        "The app will send:",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                    Text(preview, style = PacketStyle)
+                }
+                if (problem != null && action.fields.none { it.key == "msg" } && left < 0) {
+                    Text(problem, style = MaterialTheme.typography.labelMedium, color = AprsTheme.colors.error)
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSend(preview) }, enabled = problem == null) { Text("Send") }
+            Button(
+                onClick = {
+                    val ed = prefs.edit()
+                    for (f in action.fields) {
+                        if (f.remembered) ed.putString(memoryKey(f), values[f.key].orEmpty().trim())
+                    }
+                    ed.apply()
+                    onSend(service.callsign, preview)
+                },
+                enabled = problem == null,
+            ) { Text("Send", fontWeight = FontWeight.Bold) }
         },
-        dismissButton = { TextButton(onClick = onBack) { Text("Back") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
