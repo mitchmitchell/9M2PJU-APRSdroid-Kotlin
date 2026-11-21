@@ -94,8 +94,41 @@ class MapClusterTest {
         fun sta(call: String, symbol: String) =
             MapStation(call, null, symbol, LatLon(0.0, 0.0), null, null, null, null, emptyList())
         val all = listOf(sta("HOME", "/-"), sta("CAR", "/>"), sta("ME", "/-"))
-        assertEquals(StationCounts(3, 1, 2), MapFilters.counts(all))
-        assertEquals(listOf("CAR", "ME"), MapFilters.apply(all, StationFilter.MOBILE, setOf("ME")).map { it.call })
-        assertEquals(listOf("HOME", "ME"), MapFilters.apply(all, StationFilter.FIXED, emptySet()).map { it.call })
+        val counts = MapFilters.counts(all)
+        assertEquals(3, counts.all)
+        assertEquals(1, counts[StationKind.MOBILE])
+        assertEquals(2, counts[StationKind.FIXED])
+        assertEquals(0, counts[StationKind.WEATHER])
+        assertEquals(listOf("CAR", "ME"), MapFilters.apply(all, setOf(StationKind.MOBILE), setOf("ME")).map { it.call })
+        assertEquals(listOf("HOME", "ME"), MapFilters.apply(all, setOf(StationKind.FIXED), emptySet()).map { it.call })
+        assertEquals(3, MapFilters.apply(all, emptySet(), emptySet()).size)
+    }
+
+    @Test
+    fun everyStationIsExactlyOneKind() {
+        assertEquals(StationKind.WEATHER, MapFilters.kindOf("/_", 5))      // wind speed is not movement
+        assertEquals(StationKind.DIGIPEATER, MapFilters.kindOf("/#", null))
+        assertEquals(StationKind.DIGIPEATER, MapFilters.kindOf("S#", null)) // overlay digipeater
+        assertEquals(StationKind.IGATE, MapFilters.kindOf("I&", null))
+        assertEquals(StationKind.AIR, MapFilters.kindOf("/O", 20))          // balloon
+        assertEquals(StationKind.AIR, MapFilters.kindOf("/'", null))        // small aircraft
+        assertEquals(StationKind.MOBILE, MapFilters.kindOf("/>", null))
+        assertEquals(StationKind.MOBILE, MapFilters.kindOf("/-", 12))       // a moving "house"
+        assertEquals(StationKind.FIXED, MapFilters.kindOf("/-", 0))
+        assertEquals(StationKind.FIXED, MapFilters.kindOf("", null))
+    }
+
+    @Test
+    fun chipsFilterFirstThenSwitchOnAndOff() {
+        val all = emptySet<StationKind>()
+        val onlyWeather = MapFilters.toggle(all, StationKind.WEATHER)
+        assertEquals(setOf(StationKind.WEATHER), onlyWeather)                 // tap = show only this
+        val two = MapFilters.toggle(onlyWeather, StationKind.DIGIPEATER)
+        assertEquals(setOf(StationKind.WEATHER, StationKind.DIGIPEATER), two) // tap another = add it
+        assertEquals(setOf(StationKind.DIGIPEATER), MapFilters.toggle(two, StationKind.WEATHER)) // tap again = off
+        assertEquals(all, MapFilters.toggle(onlyWeather, StationKind.WEATHER)) // last one off = All
+        var s = all
+        for (k in StationKind.values()) s = MapFilters.toggle(s, k)
+        assertEquals(all, s)                                                   // every one on = All
     }
 }

@@ -70,8 +70,9 @@ class GoogleMapAct : ComponentActivity() {
     private var trackedCall by mutableStateOf("")
     private var selectedCall by mutableStateOf("")
     private var clusterCalls by mutableStateOf(emptyList<String>())
-    private var stationFilter by mutableStateOf(StationFilter.ALL)
-    private var stationCounts by mutableStateOf(StationCounts(0, 0, 0))
+    /** Kinds of station shown on the map; empty means all. */
+    private var stationFilter by mutableStateOf(emptySet<StationKind>())
+    private var stationCounts by mutableStateOf(StationCounts.NONE)
     /** Stations after the filter, as last loaded; re-clustered whenever the zoom changes. */
     private var shownStations: List<MapStation> = emptyList()
     private val clusterMarkers = ArrayList<Marker>()
