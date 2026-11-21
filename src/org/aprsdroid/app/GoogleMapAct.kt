@@ -102,7 +102,8 @@ class GoogleMapAct : ComponentActivity() {
 
     private val locReceiver by lazy {
         LocationReceiver2<List<MapStation>>(
-            { MapData.loadStations(this, prefs, targetcall, showObjects) },
+            // Always load objects, so the Objects switch can show how many there are even when hidden.
+            { MapData.loadStations(this, prefs, targetcall, true) },
             { stations -> onStationUpdate(stations) },
             { },
         )
@@ -364,8 +365,9 @@ class GoogleMapAct : ComponentActivity() {
     private fun onStationUpdate(stations: List<MapStation>) {
         dataVersion++
         isLoading = false
-        stationCounts = MapFilters.counts(stations)
-        shownStations = MapFilters.apply(stations, stationFilter, setOf(prefs.getCallSsid(), targetcall))
+        val (visible, counts) = MapFilters.withObjects(stations, showObjects)
+        stationCounts = counts
+        shownStations = MapFilters.apply(visible, stationFilter, setOf(prefs.getCallSsid(), targetcall))
         render()
         followTarget()
     }

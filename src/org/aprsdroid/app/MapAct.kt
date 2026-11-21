@@ -866,8 +866,8 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
      */
     private fun loadStations(): ArrayList<OSMStation> {
         val stations = ArrayList<OSMStation>()
-        val all = MapData.loadStations(this, prefs, targetcall, showObjects)
-        val counts = MapFilters.counts(all)
+        // Always load objects, so the Objects switch can show how many there are even when hidden.
+        val (all, counts) = MapFilters.withObjects(MapData.loadStations(this, prefs, targetcall, true), showObjects)
         runOnUiThread { stationCounts = counts }
         val keep = setOf(prefs.getCallSsid(), targetcall)
         for (sta in MapFilters.apply(all, stationFilter, keep)) {

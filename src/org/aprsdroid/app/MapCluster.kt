@@ -24,7 +24,12 @@ enum class StationKind(val label: String) {
 }
 
 /** Station counts for the filter chips. */
-data class StationCounts(val all: Int, val byKind: Map<StationKind, Int>) {
+data class StationCounts(
+    val all: Int,
+    val byKind: Map<StationKind, Int>,
+    /** Objects known, whether or not they are being shown. */
+    val objects: Int = 0,
+) {
     operator fun get(kind: StationKind): Int = byKind[kind] ?: 0
 
     companion object {
@@ -69,6 +74,18 @@ object MapFilters {
     @JvmStatic
     fun counts(stations: List<MapStation>): StationCounts =
         StationCounts(stations.size, stations.groupingBy { kindOf(it.symbol, it.speed) }.eachCount())
+
+    /**
+     * Split a full load (objects included) into what the map should show and
+     * the counts for the filter controls. The object count is always the
+     * number known, so the Objects switch can say how many it hides.
+     */
+    @JvmStatic
+    fun withObjects(everything: List<MapStation>, showObjects: Boolean): Pair<List<MapStation>, StationCounts> {
+        val objects = everything.count { it.origin != null }
+        val shown = if (showObjects) everything else everything.filter { it.origin == null }
+        return shown to counts(shown).copy(objects = objects)
+    }
 
     /**
      * Keep the stations whose kind is in [shown]; an empty set shows everything.

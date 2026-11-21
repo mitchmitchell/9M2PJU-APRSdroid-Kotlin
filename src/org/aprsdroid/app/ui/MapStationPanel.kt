@@ -18,6 +18,8 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import org.aprsdroid.app.StationCounts
 import org.aprsdroid.app.MapFilters
 import org.aprsdroid.app.StationKind
@@ -263,7 +265,11 @@ private fun FilterPanel(
                     .padding(horizontal = 4.dp, vertical = 4.dp),
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Objects", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Objects  ${counts.objects}",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Text(
                         "Repeaters, nets and events placed on the map by other stations",
                         style = MaterialTheme.typography.bodySmall,
@@ -303,7 +309,7 @@ private fun FilterChips(
             if (counts[kind] == 0 && kind !in filter) continue
             FilterChip(kind.label, counts[kind], kind in filter) { onFilter(MapFilters.toggle(filter, kind)) }
         }
-        ObjectsChip(showObjects, onToggleObjects)
+        ObjectsChip(showObjects, counts.objects, onToggleObjects)
     }
 }
 
@@ -339,7 +345,7 @@ private fun FilterChip(label: String, count: Int, selected: Boolean, onClick: ()
  * (repeaters, nets, events, hazards) as opposed to stations reporting themselves.
  */
 @Composable
-private fun ObjectsChip(shown: Boolean, onToggle: () -> Unit) {
+private fun ObjectsChip(shown: Boolean, count: Int, onToggle: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -348,22 +354,28 @@ private fun ObjectsChip(shown: Boolean, onToggle: () -> Unit) {
         modifier = Modifier
             .heightIn(min = 40.dp)
             .clip(RoundedCornerShape(50))
+            // The label no longer says "shown" or "hidden", so say it for screen readers.
+            .semantics { stateDescription = if (shown) "Shown" else "Hidden" }
             .toggleable(value = shown, role = Role.Switch, onValueChange = { onToggle() }),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(start = 10.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
         ) {
+            // A tick when objects are on the map, a red cross when they are hidden.
             Icon(
                 if (shown) Icons.Filled.Check else Icons.Filled.Close,
                 contentDescription = null,
+                tint = if (shown) LocalContentColor.current else AprsTheme.colors.error,
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.width(6.dp))
+            Text("Objects", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(8.dp))
             Text(
-                if (shown) "Objects shown" else "Objects hidden",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
+                count.toString(),
+                style = CallsignStyle.copy(fontSize = 13.sp),
+                color = LocalContentColor.current.copy(alpha = 0.75f),
             )
         }
     }
