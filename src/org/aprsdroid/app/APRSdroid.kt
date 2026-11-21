@@ -45,16 +45,7 @@ class APRSdroid : ComponentActivity() {
 
         setContent {
             AprsTheme {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(R.drawable.icon),
-                        contentDescription = getString(R.string.app_name),
-                        modifier = Modifier.size(128.dp),
-                    )
-                }
+                org.aprsdroid.app.ui.SplashScreen()
 
                 LaunchedEffect(Unit) {
                     delay(SPLASH_DELAY_MS)
