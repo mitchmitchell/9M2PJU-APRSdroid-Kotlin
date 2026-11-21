@@ -144,6 +144,10 @@
 		<category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 	</activity>
+	<activity android:name=".AlertPrefs"
+		android:label="Alerts"
+		android:parentActivityName=".PrefsAct"
+		android:exported="false" />
 	<activity android:name=".AtakPrefs"
 		android:label="@string/p__atak"
 		android:parentActivityName=".PrefsAct"

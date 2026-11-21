@@ -60,6 +60,7 @@ class AprsService : Service() {
     var digipeaterService: DigipeaterService? = null
     /** ATAK / TAK Cursor-on-Target export of received stations. */
     var exporter: StationExporter? = null
+    private var alerts: AlertEngine? = null
     var singleShot = false
     @Volatile private var destroyed = false
 
@@ -94,6 +95,8 @@ class AprsService : Service() {
         igateService?.stop()
         exporter?.stop()
         exporter = null
+        alerts?.stop()
+        alerts = null
         serviceScope.cancel()
         ServiceNotifier.instance.stop(this)
         // Documented API event (doc/API.mdwn); was missing from the Kotlin port.
@@ -176,6 +179,7 @@ class AprsService : Service() {
                 onChatToAprs = { call, parts -> queueMessages(call, parts) },
                 onMarker = { name, lat, lon, comment -> sendObject(name, lat, lon, comment) },
             ).also { it.start() }
+            alerts = AlertEngine(this).also { it.start() }
         } else {
             onPosterStarted()
         }
@@ -557,6 +561,11 @@ class AprsService : Service() {
                     qrg = qrg,
                     flags = 0,
                 )
+            )
+
+            alerts?.onPosition(
+                name, pos.latitude, pos.longitude, ts, cse?.speed,
+                isOwn = call.equals(prefs.getCallSsid(), ignoreCase = true),
             )
 
             val location = AprsPacket.position2location(ts, pos, cse)
