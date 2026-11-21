@@ -52,6 +52,9 @@ object AprsServices {
             return template(clean).trim().replace(Regex(" {2,}"), " ")
         }
 
+        /** The command as typed by hand, with each field's name where the user's detail goes. */
+        fun example(): String = template(fields.associate { it.key to "<${it.label.lowercase()}>" }).trim()
+
         /** Why the form cannot be sent yet, or null if it can. */
         fun problem(values: Map<String, String>): String? {
             for (f in fields) {

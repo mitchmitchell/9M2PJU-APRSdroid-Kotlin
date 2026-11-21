@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Add
@@ -59,6 +60,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -117,6 +119,7 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     /** Kinds of station shown on the map; empty means all. */
     private var stationFilter by mutableStateOf(emptySet<StationKind>())
     private var stationCounts by mutableStateOf(StationCounts.NONE)
+    private var filterPanelOpen by mutableStateOf(false)
     /** Bumped on every station reload so the panel refreshes. */
     private var dataVersion by mutableStateOf(0)
     private var targetcall: String
@@ -341,6 +344,16 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                         modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
                     ) {
                         MapButton {
+                            IconButton(onClick = { filterPanelOpen = !filterPanelOpen }) {
+                                Icon(
+                                    Icons.Filled.FilterList,
+                                    contentDescription = "Filter by type",
+                                    // Tinted while a filter is in force, so a thinned map is never a mystery.
+                                    tint = if (stationFilter.isEmpty()) LocalContentColor.current else MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                        MapButton {
                             IconButton(onClick = { changeZoom(1) }) {
                                 Icon(Icons.Filled.Add, contentDescription = "Zoom in")
                             }
@@ -379,6 +392,8 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
                         filter = stationFilter,
                         counts = stationCounts,
                         onFilter = { stationFilter = it; reloadMap() },
+                        filterPanelOpen = filterPanelOpen,
+                        onCloseFilterPanel = { filterPanelOpen = false },
                         showObjects = showObjectsChecked,
                         onToggleObjects = {
                             val newState = prefs.toggleBoolean("show_objects", true)
@@ -711,7 +726,10 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
             // Back closes search or the station panel before leaving the map.
-            KeyEvent.KEYCODE_BACK -> if (selectedCall.isNotEmpty() || clusterCalls.isNotEmpty()) {
+            KeyEvent.KEYCODE_BACK -> if (filterPanelOpen) {
+                filterPanelOpen = false
+                return true
+            } else if (selectedCall.isNotEmpty() || clusterCalls.isNotEmpty()) {
                 clusterCalls = emptyList()
                 selectedCall = ""
                 return true

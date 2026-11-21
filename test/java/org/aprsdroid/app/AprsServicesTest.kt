@@ -55,4 +55,12 @@ class AprsServicesTest {
         }
         assertNull(AprsServices.forCallsign("N0CALL"))
     }
+
+    @Test
+    fun helpShowsEachCommandWithPlaceholders() {
+        assertEquals("@<phone number> <message>", action("SMS", "Send a text").example())
+        assertEquals("SMS <to> <message>", action("WLNK-1", "Send a short email").example())
+        assertEquals("CQ <group> <message>", action("ANSRVR", "Message a group").example())
+        assertEquals("L", action("WLNK-1", "Check my mail").example())
+    }
 }
