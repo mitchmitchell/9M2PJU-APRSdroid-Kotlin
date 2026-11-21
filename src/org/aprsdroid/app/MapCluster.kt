@@ -18,6 +18,8 @@ enum class StationKind(val label: String) {
     WEATHER("Weather"),
     DIGIPEATER("Digipeaters"),
     IGATE("IGates"),
+    BALLOON("Balloons"),
+    BOAT("Boats"),
     AIR("Aircraft"),
 }
 
@@ -56,7 +58,9 @@ object MapFilters {
                 c == '_' || (!primary && c == 'W') -> return StationKind.WEATHER
                 c == '#' -> return StationKind.DIGIPEATER
                 c == '&' -> return StationKind.IGATE
-                (primary && c in "'^XgO") || (!primary && c == '^') -> return StationKind.AIR
+                primary && c == 'O' -> return StationKind.BALLOON
+                (primary && c in "sYC") || (!primary && c == 's') -> return StationKind.BOAT
+                (primary && c in "'^Xg") || (!primary && c == '^') -> return StationKind.AIR
             }
         }
         return if (isMobile(symbol, speed)) StationKind.MOBILE else StationKind.FIXED

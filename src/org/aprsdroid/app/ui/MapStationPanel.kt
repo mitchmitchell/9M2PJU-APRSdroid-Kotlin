@@ -105,6 +105,9 @@ fun BoxScope.MapStationLayer(
     onFilter: (Set<StationKind>) -> Unit,
     showObjects: Boolean,
     onToggleObjects: () -> Unit,
+    /** Whether the "Filter by type" panel is open (the host owns the button that opens it). */
+    filterPanelOpen: Boolean,
+    onCloseFilterPanel: () -> Unit,
     onFound: (StationEntity) -> Unit,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit,
@@ -122,6 +125,16 @@ fun BoxScope.MapStationLayer(
             StatusPill()
             if (followedCall.isNotEmpty()) TrackingChip(call = followedCall, onStop = onStopFollowing)
         }
+    }
+
+    AnimatedVisibility(
+        visible = filterPanelOpen,
+        enter = slideInVertically { -it / 4 } + androidx.compose.animation.fadeIn(),
+        exit = slideOutVertically { -it / 4 } + androidx.compose.animation.fadeOut(),
+        // Beside the button column, under nothing.
+        modifier = Modifier.align(Alignment.TopEnd).padding(top = 12.dp, end = 72.dp),
+    ) {
+        FilterPanel(filter, counts, onFilter, showObjects, onToggleObjects, onCloseFilterPanel)
     }
 
     val panelOpen = selectedCall.isNotEmpty() || clusterCalls.isNotEmpty()
@@ -148,6 +161,122 @@ fun BoxScope.MapStationLayer(
                 onDismiss = onDismiss,
                 onFollow = { onFollow(shownCall) },
                 onStopFollowing = onStopFollowing,
+            )
+        }
+    }
+}
+
+/** A colour per kind, used as a dot beside its name. The name carries the meaning; the dot only helps find it. */
+private fun kindColor(kind: StationKind): Color = when (kind) {
+    StationKind.MOBILE -> Color(0xFF3FAE7A)
+    StationKind.FIXED -> Color(0xFF8A93A6)
+    StationKind.WEATHER -> Color(0xFF4A9FE0)
+    StationKind.DIGIPEATER -> Color(0xFF9A6BE0)
+    StationKind.IGATE -> Color(0xFFE0A030)
+    StationKind.BALLOON -> Color(0xFFE0558F)
+    StationKind.BOAT -> Color(0xFF3FB6C8)
+    StationKind.AIR -> Color(0xFFE8C23A)
+}
+
+/**
+ * "Filter by type": every kind as a tile with its count, three to a row.
+ * Same selection as the chip row, with room to see all the kinds at once.
+ */
+@Composable
+private fun FilterPanel(
+    filter: Set<StationKind>,
+    counts: StationCounts,
+    onFilter: (Set<StationKind>) -> Unit,
+    showObjects: Boolean,
+    onToggleObjects: () -> Unit,
+    onClose: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shadowElevation = 8.dp,
+        modifier = Modifier.widthIn(max = 340.dp),
+    ) {
+        Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Filter by type", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                IconButton(onClick = onClose) { Icon(Icons.Filled.Close, contentDescription = "Close filters") }
+            }
+            // "All" first, then every kind, three to a row.
+            val tiles: List<StationKind?> = listOf<StationKind?>(null) + StationKind.values()
+            for (row in tiles.chunked(3)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                ) {
+                    for (kind in row) {
+                        val selected = if (kind == null) filter.isEmpty() else kind in filter
+                        val count = if (kind == null) counts.all else counts[kind]
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (selected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
+                            else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .selectable(
+                                    selected = selected,
+                                    role = Role.Checkbox,
+                                    onClick = {
+                                        onFilter(if (kind == null) emptySet() else MapFilters.toggle(filter, kind))
+                                    },
+                                ),
+                        ) {
+                            Column(Modifier.padding(horizontal = 10.dp, vertical = 10.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (kind != null) {
+                                        Box(Modifier.size(8.dp).background(kindColor(kind), CircleShape))
+                                        Spacer(Modifier.width(6.dp))
+                                    }
+                                    Text(
+                                        kind?.label ?: "All",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                Text(
+                                    count.toString(),
+                                    style = CallsignStyle.copy(fontSize = 13.sp),
+                                    color = LocalContentColor.current.copy(alpha = 0.75f),
+                                )
+                            }
+                        }
+                    }
+                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .toggleable(value = showObjects, role = Role.Switch, onValueChange = { onToggleObjects() })
+                    .padding(horizontal = 4.dp, vertical = 4.dp),
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Objects", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Repeaters, nets and events placed on the map by other stations",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                androidx.compose.material3.Switch(checked = showObjects, onCheckedChange = null)
+            }
+            Text(
+                "Tap a type to show only it. Tap more to add them. Tap All to reset.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
     }

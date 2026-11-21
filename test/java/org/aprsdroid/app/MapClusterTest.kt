@@ -110,7 +110,9 @@ class MapClusterTest {
         assertEquals(StationKind.DIGIPEATER, MapFilters.kindOf("/#", null))
         assertEquals(StationKind.DIGIPEATER, MapFilters.kindOf("S#", null)) // overlay digipeater
         assertEquals(StationKind.IGATE, MapFilters.kindOf("I&", null))
-        assertEquals(StationKind.AIR, MapFilters.kindOf("/O", 20))          // balloon
+        assertEquals(StationKind.BALLOON, MapFilters.kindOf("/O", 20))
+        assertEquals(StationKind.BOAT, MapFilters.kindOf("/Y", 6))           // yacht
+        assertEquals(StationKind.BOAT, MapFilters.kindOf("\\s", null))       // ship, alternate table
         assertEquals(StationKind.AIR, MapFilters.kindOf("/'", null))        // small aircraft
         assertEquals(StationKind.MOBILE, MapFilters.kindOf("/>", null))
         assertEquals(StationKind.MOBILE, MapFilters.kindOf("/-", 12))       // a moving "house"

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Add
@@ -24,6 +25,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -73,6 +76,7 @@ class GoogleMapAct : ComponentActivity() {
     /** Kinds of station shown on the map; empty means all. */
     private var stationFilter by mutableStateOf(emptySet<StationKind>())
     private var stationCounts by mutableStateOf(StationCounts.NONE)
+    private var filterPanelOpen by mutableStateOf(false)
     /** Stations after the filter, as last loaded; re-clustered whenever the zoom changes. */
     private var shownStations: List<MapStation> = emptyList()
     private val clusterMarkers = ArrayList<Marker>()
@@ -154,6 +158,16 @@ class GoogleMapAct : ComponentActivity() {
                     modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
                 ) {
                     MapButton {
+                        IconButton(onClick = { filterPanelOpen = !filterPanelOpen }) {
+                            Icon(
+                                Icons.Filled.FilterList,
+                                contentDescription = "Filter by type",
+                                // Tinted while a filter is in force, so a thinned map is never a mystery.
+                                tint = if (stationFilter.isEmpty()) LocalContentColor.current else MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    MapButton {
                         IconButton(onClick = { map?.animateCamera(CameraUpdateFactory.zoomIn()) }) {
                             Icon(Icons.Filled.Add, contentDescription = "Zoom in")
                         }
@@ -184,9 +198,15 @@ class GoogleMapAct : ComponentActivity() {
                         )
                     }
                 }
-                androidx.activity.compose.BackHandler(enabled = selectedCall.isNotEmpty() || clusterCalls.isNotEmpty()) {
-                    clusterCalls = emptyList()
-                    selectedCall = ""
+                androidx.activity.compose.BackHandler(
+                    enabled = filterPanelOpen || selectedCall.isNotEmpty() || clusterCalls.isNotEmpty(),
+                ) {
+                    if (filterPanelOpen) {
+                        filterPanelOpen = false
+                    } else {
+                        clusterCalls = emptyList()
+                        selectedCall = ""
+                    }
                 }
                 MapStationLayer(
                     selectedCall = selectedCall,
@@ -196,6 +216,8 @@ class GoogleMapAct : ComponentActivity() {
                     filter = stationFilter,
                     counts = stationCounts,
                     onFilter = { stationFilter = it; reload() },
+                    filterPanelOpen = filterPanelOpen,
+                    onCloseFilterPanel = { filterPanelOpen = false },
                     showObjects = showObjects,
                     onToggleObjects = {
                         showObjects = prefs.toggleBoolean("show_objects", true)
