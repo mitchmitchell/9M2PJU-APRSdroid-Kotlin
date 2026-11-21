@@ -148,6 +148,12 @@
 		android:label="@string/p__atak"
 		android:parentActivityName=".PrefsAct"
 		android:exported="false" />
+	<activity android:name=".MapLibreAct" android:label="@string/app_map"
+		android:launchMode="singleTop"
+		android:parentActivityName=".HubActivity"
+		android:configChanges="orientation|keyboardHidden|screenSize"
+		android:exported="false"
+		/>
 	<activity android:name=".GoogleMapAct" android:label="@string/app_map"
 		android:launchMode="singleTop"
 		android:parentActivityName=".HubActivity"

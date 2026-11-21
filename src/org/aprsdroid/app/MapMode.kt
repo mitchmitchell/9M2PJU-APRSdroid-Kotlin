@@ -12,9 +12,9 @@ import com.google.android.gms.maps.GoogleMap
 /**
  * Map renderers ("map types") and dispatch to the activity that shows them.
  *
- * - OSM and the Google Map Tiles types render in the Mapsforge-based
- *   [MapAct], so station drawing, traces and the coordinate chooser are
- *   shared.
+ * - OpenStreetMap and the vector maps render in [MapLibreAct].
+ * - The Google Map Tiles types (and the coordinate chooser) still render in
+ *   the Mapsforge-based [MapAct].
  * - The Google Maps SDK types render in [GoogleMapAct]. They need a
  *   build-time key (`mapsApiKey=` in local.properties) and Google Play
  *   services on the device.
@@ -33,7 +33,11 @@ open class MapMode(
     open fun unavailableReason(ctx: Context): String? = null
 }
 
+/** OpenStreetMap drawn by the old Mapsforge screen, kept as a fallback while the new one settles in. */
 class MapsforgeOnlineMode(tag: String, titleRes: Int) : MapMode(tag, titleRes, MapAct::class.java)
+
+/** OpenStreetMap and the vector maps, drawn by MapLibre in [MapLibreAct]. */
+class MapLibreMode(val style: MapLibreStyle, titleRes: Int) : MapMode(style.tag, titleRes, MapLibreAct::class.java)
 
 class GoogleTilesMode(
     tag: String,
@@ -78,7 +82,9 @@ object MapModes {
     @JvmStatic
     fun initialize(ctx: Context) {
         if (allMapModes.isNotEmpty()) return
-        allMapModes += MapsforgeOnlineMode("osm", R.string.map_osm)
+        allMapModes += MapLibreMode(MapLibreStyle.OSM, R.string.map_osm)
+        allMapModes += MapLibreMode(MapLibreStyle.STREETS, R.string.map_ml_streets)
+        allMapModes += MapLibreMode(MapLibreStyle.QUIET, R.string.map_ml_quiet)
         allMapModes += GoogleMapMode("google", R.string.map_google, GoogleMap.MAP_TYPE_NORMAL)
         allMapModes += GoogleMapMode("google_quiet", R.string.map_google_quiet, GoogleMap.MAP_TYPE_NORMAL, quiet = true)
         allMapModes += GoogleMapMode("satellite", R.string.map_satellite, GoogleMap.MAP_TYPE_HYBRID)
@@ -88,6 +94,7 @@ object MapModes {
         allMapModes += GoogleTilesMode(GoogleTiles.Type.SATELLITE.tag, R.string.map_gtiles_satellite, GoogleTiles.Type.SATELLITE)
         allMapModes += GoogleTilesMode(GoogleTiles.Type.HYBRID.tag, R.string.map_gtiles_hybrid, GoogleTiles.Type.HYBRID)
         allMapModes += GoogleTilesMode(GoogleTiles.Type.TERRAIN.tag, R.string.map_gtiles_terrain, GoogleTiles.Type.TERRAIN)
+        allMapModes += MapsforgeOnlineMode("osm_classic", R.string.map_osm_classic)
     }
 
     @JvmStatic

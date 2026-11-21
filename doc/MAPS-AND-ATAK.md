@@ -121,3 +121,31 @@ Settings → ATAK / TAK export → **From TAK to APRS**.
 
 You are the control operator for everything this sends over the radio,
 including text typed by another TAK user through a server.
+
+## Map engine (MapLibre) and offline maps
+
+The OpenStreetMap map type and two vector map types are drawn by
+[MapLibre Native](https://maplibre.org) in `MapLibreAct`:
+
+| Map type | Source | Can be saved |
+|---|---|---|
+| OpenStreetMap | `tile.openstreetmap.org` picture tiles | No (their usage policy forbids bulk saving) |
+| Street map | OpenFreeMap "liberty" vector style | Yes |
+| Quiet map | OpenFreeMap "positron" vector style | Yes |
+
+No key or account is needed. Vector maps stay sharp at any zoom, rotate
+and tilt with two fingers, and need far less data than picture tiles.
+
+**Offline maps.** On a vector map, the download button opens *Offline maps*.
+*Save this area* stores the area on screen from the current zoom down to
+street level; zoom in if the app says the area is too large (the limit is
+6000 tiles). Saved areas are listed there and can be deleted. Areas you
+have merely looked at are also kept in a cache and usually still draw with
+no connection.
+
+Stations, callsign labels and clusters are drawn by the app itself, so they
+appear with or without a base map.
+
+The Google Map Tiles types and the position chooser still use the old
+Mapsforge screen, which also remains selectable as *OpenStreetMap (old map
+screen)* in case the new one misbehaves on a device.
