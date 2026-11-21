@@ -133,4 +133,19 @@ class MapClusterTest {
         for (k in StationKind.values()) s = MapFilters.toggle(s, k)
         assertEquals(all, s)                                                   // every one on = All
     }
+
+    @Test
+    fun objectsAreCountedEvenWhenHidden() {
+        fun sta(call: String, origin: String?) =
+            MapStation(call, origin, "/-", LatLon(0.0, 0.0), null, null, null, null, emptyList())
+        val everything = listOf(sta("W5ABC", null), sta("REPEATER", "W5XYZ"), sta("NET", "W5XYZ"))
+        val (shown, counts) = MapFilters.withObjects(everything, showObjects = true)
+        assertEquals(3, shown.size)
+        assertEquals(3, counts.all)
+        assertEquals(2, counts.objects)
+        val (hidden, hiddenCounts) = MapFilters.withObjects(everything, showObjects = false)
+        assertEquals(listOf("W5ABC"), hidden.map { it.call })
+        assertEquals(1, hiddenCounts.all)
+        assertEquals(2, hiddenCounts.objects)
+    }
 }
