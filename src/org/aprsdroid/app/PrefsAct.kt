@@ -143,10 +143,11 @@ class PrefsAct : ComponentActivity() {
         items.add(PrefItem.List(
             key = "ssid",
             title = getString(R.string.p_ssid),
-            summary = getString(R.string.p_ssid_summary),
+            // No fixed summary: the row shows the SSID in use.
             entries = stringArray(R.array.p_ssid_e),
             entryValues = stringArray(R.array.p_ssid_ev),
-            default = "5",
+            // Must match PrefsWrapper.getSsid(), or the list marks one SSID while another is sent.
+            default = PrefsWrapper.DEFAULT_SSID,
             dialogTitle = getString(R.string.p_ssid_entry),
         ))
         items.add(PrefItem.EditText(

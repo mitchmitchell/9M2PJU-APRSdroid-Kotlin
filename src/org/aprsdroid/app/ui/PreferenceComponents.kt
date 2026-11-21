@@ -1,5 +1,7 @@
 package org.aprsdroid.app.ui
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.content.Context
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -384,7 +386,8 @@ private fun PrefListRow(item: PrefItem.List) {
             onDismissRequest = { showDialog = false },
             title = { Text(item.dialogTitle ?: item.title) },
             text = {
-                Column {
+                // Long lists (the 16 SSIDs) must scroll, or the last entries cannot be reached.
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     item.entries.forEachIndexed { idx, entry ->
                         Row(
                             modifier = Modifier
