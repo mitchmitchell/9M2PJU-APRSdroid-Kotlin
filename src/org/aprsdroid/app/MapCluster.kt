@@ -8,11 +8,27 @@ import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.sin
 
-/** Which stations the map shows. */
-enum class StationFilter { ALL, MOBILE, FIXED }
+/**
+ * The kinds of station the map can filter by. Every station is exactly one
+ * kind, decided from its symbol (and speed), so the counts add up to the total.
+ */
+enum class StationKind(val label: String) {
+    MOBILE("Mobile"),
+    FIXED("Fixed"),
+    WEATHER("Weather"),
+    DIGIPEATER("Digipeaters"),
+    IGATE("IGates"),
+    AIR("Aircraft"),
+}
 
 /** Station counts for the filter chips. */
-data class StationCounts(val all: Int, val mobile: Int, val fixed: Int)
+data class StationCounts(val all: Int, val byKind: Map<StationKind, Int>) {
+    operator fun get(kind: StationKind): Int = byKind[kind] ?: 0
+
+    companion object {
+        val NONE = StationCounts(0, emptyMap())
+    }
+}
 
 /** Renderer-neutral filtering, shared by every map screen. */
 object MapFilters {
@@ -30,20 +46,48 @@ object MapFilters {
         return if (symbol[0] == '/') symbol[1] in MOBILE_PRIMARY else symbol[1] in MOBILE_ALTERNATE
     }
 
+    /** What kind of station this is. Infrastructure and weather win over "fixed". */
     @JvmStatic
-    fun counts(stations: List<MapStation>): StationCounts {
-        val mobile = stations.count { isMobile(it.symbol, it.speed) }
-        return StationCounts(stations.size, mobile, stations.size - mobile)
+    fun kindOf(symbol: String, speed: Int?): StationKind {
+        if (symbol.length >= 2) {
+            val primary = symbol[0] == '/'
+            val c = symbol[1]
+            when {
+                c == '_' || (!primary && c == 'W') -> return StationKind.WEATHER
+                c == '#' -> return StationKind.DIGIPEATER
+                c == '&' -> return StationKind.IGATE
+                (primary && c in "'^XgO") || (!primary && c == '^') -> return StationKind.AIR
+            }
+        }
+        return if (isMobile(symbol, speed)) StationKind.MOBILE else StationKind.FIXED
     }
 
-    /** Apply [filter]; stations named in [keep] (yourself, the followed station) always stay. */
     @JvmStatic
-    fun apply(stations: List<MapStation>, filter: StationFilter, keep: Set<String>): List<MapStation> =
-        when (filter) {
-            StationFilter.ALL -> stations
-            StationFilter.MOBILE -> stations.filter { it.call in keep || isMobile(it.symbol, it.speed) }
-            StationFilter.FIXED -> stations.filter { it.call in keep || !isMobile(it.symbol, it.speed) }
-        }
+    fun counts(stations: List<MapStation>): StationCounts =
+        StationCounts(stations.size, stations.groupingBy { kindOf(it.symbol, it.speed) }.eachCount())
+
+    /**
+     * Keep the stations whose kind is in [shown]; an empty set shows everything.
+     * Stations named in [keep] (yourself, the followed station) always stay.
+     */
+    @JvmStatic
+    fun apply(stations: List<MapStation>, shown: Set<StationKind>, keep: Set<String>): List<MapStation> =
+        if (shown.isEmpty()) stations
+        else stations.filter { it.call in keep || kindOf(it.symbol, it.speed) in shown }
+
+    /**
+     * What tapping a kind's chip does to the selection.
+     *
+     * With everything shown, tapping a kind shows only that kind (a filter).
+     * After that each chip is an on/off switch: tap another kind to add it,
+     * tap a selected one to remove it. Switching the last one off, or every
+     * one on, is the same as "All".
+     */
+    @JvmStatic
+    fun toggle(shown: Set<StationKind>, kind: StationKind): Set<StationKind> {
+        val next = if (kind in shown) shown - kind else shown + kind
+        return if (next.size == StationKind.values().size) emptySet() else next
+    }
 }
 
 /**

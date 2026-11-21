@@ -114,8 +114,9 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
     private var selectedCall by mutableStateOf("")
     /** Stations of a tapped cluster, offered as a list in the panel. */
     private var clusterCalls by mutableStateOf(emptyList<String>())
-    private var stationFilter by mutableStateOf(StationFilter.ALL)
-    private var stationCounts by mutableStateOf(StationCounts(0, 0, 0))
+    /** Kinds of station shown on the map; empty means all. */
+    private var stationFilter by mutableStateOf(emptySet<StationKind>())
+    private var stationCounts by mutableStateOf(StationCounts.NONE)
     /** Bumped on every station reload so the panel refreshes. */
     private var dataVersion by mutableStateOf(0)
     private var targetcall: String

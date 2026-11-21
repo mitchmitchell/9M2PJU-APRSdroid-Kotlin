@@ -19,7 +19,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import org.aprsdroid.app.StationCounts
-import org.aprsdroid.app.StationFilter
+import org.aprsdroid.app.MapFilters
+import org.aprsdroid.app.StationKind
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxScope
@@ -98,9 +99,10 @@ fun BoxScope.MapStationLayer(
     clusterCalls: List<String>,
     followedCall: String,
     refreshKey: Any?,
-    filter: StationFilter,
+    /** The kinds being shown; empty means all of them. */
+    filter: Set<StationKind>,
     counts: StationCounts,
-    onFilter: (StationFilter) -> Unit,
+    onFilter: (Set<StationKind>) -> Unit,
     showObjects: Boolean,
     onToggleObjects: () -> Unit,
     onFound: (StationEntity) -> Unit,
@@ -154,9 +156,9 @@ fun BoxScope.MapStationLayer(
 /** "All 212 / Mobile 14 / Fixed 198": thin a crowded map with one tap. */
 @Composable
 private fun FilterChips(
-    filter: StationFilter,
+    filter: Set<StationKind>,
     counts: StationCounts,
-    onFilter: (StationFilter) -> Unit,
+    onFilter: (Set<StationKind>) -> Unit,
     showObjects: Boolean,
     onToggleObjects: () -> Unit,
 ) {
@@ -164,9 +166,14 @@ private fun FilterChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.horizontalScroll(rememberScrollState()),
     ) {
-        FilterChip("All", counts.all, filter == StationFilter.ALL) { onFilter(StationFilter.ALL) }
-        FilterChip("Mobile", counts.mobile, filter == StationFilter.MOBILE) { onFilter(StationFilter.MOBILE) }
-        FilterChip("Fixed", counts.fixed, filter == StationFilter.FIXED) { onFilter(StationFilter.FIXED) }
+        // "All" shows everything. A kind's chip first filters to that kind,
+        // then each chip switches its kind on or off (see MapFilters.toggle).
+        FilterChip("All", counts.all, filter.isEmpty()) { onFilter(emptySet()) }
+        for (kind in StationKind.values()) {
+            // Kinds with nothing on the map are left out, unless still selected.
+            if (counts[kind] == 0 && kind !in filter) continue
+            FilterChip(kind.label, counts[kind], kind in filter) { onFilter(MapFilters.toggle(filter, kind)) }
+        }
         ObjectsChip(showObjects, onToggleObjects)
     }
 }
@@ -181,7 +188,7 @@ private fun FilterChip(label: String, count: Int, selected: Boolean, onClick: ()
         modifier = Modifier
             .heightIn(min = 40.dp)
             .clip(RoundedCornerShape(50))
-            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+            .selectable(selected = selected, role = Role.Checkbox, onClick = onClick),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
