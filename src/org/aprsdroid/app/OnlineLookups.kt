@@ -38,7 +38,7 @@ object OnlineLookups {
     fun hasQrz(ctx: Context): Boolean = get(ctx, KEY_QRZ_USER).isNotEmpty() && get(ctx, KEY_QRZ_PASSWORD).isNotEmpty()
 
     private fun userAgent(): String =
-        "APRSDroid-TAK/${BuildConfig.VERSION_NAME} (+https://github.com/mitchmitchell/APRSDroid-TAK)"
+        "APRSDroid-TAK/${BuildConfig.VERSION_NAME.removePrefix("v")} (+https://github.com/mitchmitchell/APRSDroid-TAK)"
 
     private fun http(url: String, token: String? = null, post: String? = null): String {
         val conn = URL(url).openConnection() as HttpURLConnection
@@ -84,7 +84,7 @@ object OnlineLookups {
     private fun qrzLogin(ctx: Context): QrzReply {
         // Credentials go in the POST body over HTTPS, never in the URL.
         val body = "username=${enc(get(ctx, KEY_QRZ_USER))}&password=${enc(get(ctx, KEY_QRZ_PASSWORD))}" +
-            "&agent=${enc("APRSDroid-TAK/" + BuildConfig.VERSION_NAME)}"
+            "&agent=${enc("APRSDroid-TAK/" + BuildConfig.VERSION_NAME.removePrefix("v"))}"
         val reply = QrzLookup.parse(http(QrzLookup.BASE_URL, post = body))
         secrets(ctx).edit().putString(KEY_QRZ_SESSION, reply.sessionKey.orEmpty()).apply()
         return reply

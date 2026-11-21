@@ -258,7 +258,7 @@ class MapAct : MapActivity(), LifecycleOwner, ViewModelStoreOwner, SavedStateReg
      * identifies the app and gives a contact, and block generic ones.
      */
     private fun tileUserAgent(): String =
-        "APRSDroid-TAK/${BuildConfig.VERSION_NAME} (+https://github.com/mitchmitchell/APRSDroid-TAK)"
+        "APRSDroid-TAK/${BuildConfig.VERSION_NAME.removePrefix("v")} (+https://github.com/mitchmitchell/APRSDroid-TAK)"
 
     /** Tell the user why the map is blank, at most once a minute. Called on the map worker thread. */
     private fun onTileError(reason: String) {

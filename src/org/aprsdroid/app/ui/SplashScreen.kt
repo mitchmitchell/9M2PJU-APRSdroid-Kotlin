@@ -102,7 +102,7 @@ fun SplashScreen() {
             Spacer(Modifier.height(18.dp))
             Text(
                 "Built on APRSdroid by Georg Lukas DO1GL, with the work of NA7Q and 9M2PJU.\n" +
-                    "Version ${BuildConfig.VERSION_NAME}",
+                    "Version ${BuildConfig.VERSION_NAME.removePrefix("v")}",
                 style = TextStyle(fontSize = 13.sp, lineHeight = 19.sp),
                 color = Quiet,
                 textAlign = align,
