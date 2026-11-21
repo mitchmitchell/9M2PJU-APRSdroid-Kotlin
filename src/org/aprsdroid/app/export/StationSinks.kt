@@ -25,6 +25,9 @@ interface StationSink {
     /** Send one report. May block; may throw — the exporter logs and carries on. */
     fun publish(report: StationReport)
 
+    /** Send a ready-made CoT event (a chat message). Same rules as [publish]. */
+    fun publishRaw(xml: String)
+
     /** Release sockets/threads. Safe to call more than once. */
     fun close()
 }
@@ -39,6 +42,8 @@ class CotUdpSink(
     private val host: String,
     private val port: Int,
     private val config: () -> CotConfig,
+    /** Chat endpoint advertised for each station; see [CotConfig.endpoint]. */
+    private val endpoint: String? = null,
 ) : StationSink {
 
     override val name = "udp:$host:$port"
@@ -54,8 +59,11 @@ class CotUdpSink(
         return Pair(s, addr)
     }
 
-    override fun publish(report: StationReport) {
-        val bytes = CotEncoder.encode(report, config()).toByteArray(Charsets.UTF_8)
+    override fun publish(report: StationReport) =
+        publishRaw(CotEncoder.encode(report, config().copy(endpoint = endpoint)))
+
+    override fun publishRaw(xml: String) {
+        val bytes = xml.toByteArray(Charsets.UTF_8)
         val (s, addr) = open()
         s.send(DatagramPacket(bytes, bytes.size, addr, port))
     }
@@ -70,8 +78,9 @@ class CotUdpSink(
  * Streams CoT XML over a TCP or TLS connection — a TAK Server's streaming
  * input (TLS 8089 normally, plain TCP 8087 if enabled), e.g. zodiac over
  * Tailscale. Reconnects on the next report after a failure, with backoff.
- * Anything the server sends back (pings, other users' CoT) is read and
- * discarded so the connection never stalls on a full receive buffer.
+ * Everything the server sends back is read so the connection never stalls
+ * on a full receive buffer; whole events are handed to [onEvent] (chat from
+ * TAK users, their markers), the rest is dropped.
  *
  * @param connect opens a connected socket (plain or TLS); see TakConnect.
  */
@@ -80,6 +89,8 @@ class CotStreamSink(
     private val connect: () -> Socket,
     private val config: () -> CotConfig,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val endpoint: String? = null,
+    private val onEvent: ((String) -> Unit)? = null,
 ) : StationSink {
 
     private var socket: Socket? = null
@@ -112,8 +123,21 @@ class CotStreamSink(
         val input: InputStream = s.getInputStream()
         reader = Thread({
             val buf = ByteArray(4096)
+            val splitter = CotStreamSplitter()
             try {
-                while (input.read(buf) >= 0) { /* discard */ }
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    val handler = onEvent ?: continue
+                    // ISO-8859-1 keeps every byte, so a UTF-8 character split
+                    // across two reads survives; each whole event is re-decoded.
+                    for (ev in splitter.feed(String(buf, 0, n, Charsets.ISO_8859_1))) {
+                        try {
+                            handler(String(ev.toByteArray(Charsets.ISO_8859_1), Charsets.UTF_8))
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
             } catch (_: IOException) {
             }
             // Server closed or reset: forget this socket (but not a newer one).
@@ -127,8 +151,11 @@ class CotStreamSink(
         out = null
     }
 
-    override fun publish(report: StationReport) {
-        val bytes = CotEncoder.encode(report, config()).toByteArray(Charsets.UTF_8)
+    override fun publish(report: StationReport) =
+        publishRaw(CotEncoder.encode(report, config().copy(endpoint = endpoint)))
+
+    override fun publishRaw(xml: String) {
+        val bytes = xml.toByteArray(Charsets.UTF_8)
         val o = ensureConnected()
         try {
             o.write(bytes)

@@ -62,6 +62,8 @@ class MessageService(private val s: AprsService) {
             )
         )
         ServiceNotifier.instance.notifyMessage(s, s.prefs, srccall, msg.messageBody)
+        // Also show it in TAK's chat when the TAK link is on.
+        s.exporter?.offerMessage(srccall, msg.messageBody, msg.messageNumber)
         s.sendBroadcast(
             Intent(AprsService.MESSAGE)
                 .putExtra(AprsService.SOURCE, srccall)
