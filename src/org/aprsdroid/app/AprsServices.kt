@@ -25,7 +25,13 @@ object AprsServices {
         val upper: Boolean = false,
         /** Keep only digits (phone numbers). */
         val digitsOnly: Boolean = false,
-    )
+    ) {
+        /**
+         * True for details worth remembering between uses (a phone number, an
+         * address, a group), false for the message text itself.
+         */
+        val remembered: Boolean get() = key != "msg" && key != "n"
+    }
 
     class Action(
         val label: String,
@@ -189,8 +195,8 @@ object AprsServices {
             callsign = "SMS",
             title = "Text a phone",
             summary = "Send a text message to a mobile phone number.",
-            note = "Run by volunteers and sometimes offline. The person you text may have to opt in before " +
-                "messages reach them. US and Canada: ten digits, no leading 1.",
+            note = "US and Canada: ten digits, no leading 1. The person you text may have to opt in before " +
+                "messages reach them.",
             actions = listOf(
                 Action(
                     "Send a text", "Sends your message to the phone number as an SMS.",
