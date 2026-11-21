@@ -13,6 +13,11 @@ import android.util.Log
  */
 class PrefsWrapper(val context: Context) {
 
+    companion object {
+        /** The SSID used until one is chosen (10 = APRS-IS, no radio). */
+        const val DEFAULT_SSID = "10"
+    }
+
     val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 
     // ---- raw accessors ----
@@ -87,7 +92,7 @@ class PrefsWrapper(val context: Context) {
         return if (s.isEmpty()) "-1" else s
     }
 
-    fun getSsid(): String = getString("ssid", "10")
+    fun getSsid(): String = getString("ssid", DEFAULT_SSID)
 
     fun getCallSsid(): String = AprsPacket.formatCallSsid(getCallsign(), getSsid())
 
