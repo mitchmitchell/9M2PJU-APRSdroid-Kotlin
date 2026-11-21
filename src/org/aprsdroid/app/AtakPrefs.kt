@@ -238,7 +238,11 @@ class AtakPrefs : ComponentActivity() {
             try {
                 val uid = PrefsWrapper(this).getString("atak.iconset_uid", org.aprsdroid.app.export.AprsIconset.DEFAULT_UID)
                     .trim().ifEmpty { org.aprsdroid.app.export.AprsIconset.DEFAULT_UID }
-                val file = java.io.File(UIHelper.getExportDirectory(this), "APRS-Icons.zip")
+                // App-owned storage, shared through the FileProvider. The public
+                // Documents folder can hold a copy left by an earlier install,
+                // which Android will not let this install overwrite.
+                val dir = java.io.File(filesDir, "exports").apply { mkdirs() }
+                val file = java.io.File(dir, "APRS-Icons.zip")
                 val sheet = AprsSymbols.sheet(this)
                 val cell = sheet.width / 16
                 file.outputStream().use { out ->
