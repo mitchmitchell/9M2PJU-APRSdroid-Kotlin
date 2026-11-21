@@ -64,6 +64,11 @@ data class CotConfig(
     val staleSeconds: Long = 3600,
     /** Maps an APRS symbol to an ATAK `usericon` iconsetpath; null sends no icon. */
     val iconPath: ((String) -> String?)? = { AprsIconset.iconPath(it) },
+    /**
+     * Where TAK should send chat for this contact ("host:port:tcp", or
+     * "*:-1:stcp" through a TAK Server). Null: the contact cannot be messaged.
+     */
+    val endpoint: String? = null,
 ) {
     companion object {
         const val DEFAULT_COT_TYPE = "a-f-G-U-C"
@@ -108,7 +113,10 @@ object CotEncoder {
             .attr("le", UNKNOWN)
             .append("/>")
         sb.append("<detail>")
-        sb.append("<contact").attr("callsign", r.call.trim() + cfg.nameSuffix).append("/>")
+        sb.append("<contact").attr("callsign", r.call.trim() + cfg.nameSuffix)
+        // Objects cannot answer a message, so only stations get an endpoint.
+        if (cfg.endpoint != null && !r.isObject) sb.attr("endpoint", cfg.endpoint)
+        sb.append("/>")
         if (r.courseDeg != null || r.speedMps != null) {
             sb.append("<track")
                 .attr("course", r.courseDeg?.let { fmt(it.toDouble()) } ?: UNKNOWN)

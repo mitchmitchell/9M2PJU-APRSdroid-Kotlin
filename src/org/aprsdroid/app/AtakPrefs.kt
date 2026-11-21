@@ -139,6 +139,31 @@ class AtakPrefs : ComponentActivity() {
             ))
         }
 
+        items.add(PrefItem.Category(getString(R.string.p_atak_twoway)))
+        items.add(PrefItem.Switch(
+            key = "atak.chat",
+            title = getString(R.string.p_atak_chat),
+            summary = getString(R.string.p_atak_chat_summary),
+            default = true,
+            dependency = "atak.enabled",
+        ))
+        items.add(PrefItem.Switch(
+            key = "atak.objects_from_tak",
+            title = getString(R.string.p_atak_markers),
+            summary = getString(R.string.p_atak_markers_summary),
+            default = false,
+            dependency = "atak.enabled",
+        ))
+        items.add(PrefItem.EditText(
+            key = "atak.listen_port",
+            title = getString(R.string.p_atak_listen_port),
+            summary = getString(R.string.p_atak_listen_port_summary),
+            default = "4349",
+            keyboardType = KeyboardType.Number,
+            isNumeric = true,
+            dependency = "atak.enabled",
+        ))
+
         items.add(PrefItem.Category(getString(R.string.p_atak_what)))
         items.add(PrefItem.Switch(
             key = "atak.include_own",

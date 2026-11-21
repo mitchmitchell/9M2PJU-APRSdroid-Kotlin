@@ -272,6 +272,13 @@
 <string name="p_atak_cert_password">Password for the .p12 file</string>
 <string name="p_atak_cert_ok">Imported %s</string>
 <string name="p_atak_cert_fail">Could not import certificate: %s</string>
+<string name="p_atak_twoway">From TAK to APRS</string>
+<string name="p_atak_chat">Messages</string>
+<string name="p_atak_chat_summary">APRS messages to you appear in TAK chat. A chat you type in TAK to an APRS station is transmitted as an APRS message.</string>
+<string name="p_atak_markers">Send TAK markers as APRS objects</string>
+<string name="p_atak_markers_summary">A marker placed in TAK is transmitted as an APRS object under your callsign. For ATAK on this phone, add a UDP output to 127.0.0.1 and the port below.</string>
+<string name="p_atak_listen_port">Port ATAK sends to on this phone</string>
+<string name="p_atak_listen_port_summary">Only apps on this phone can reach it</string>
 <string name="p_atak_what">What to send</string>
 <string name="p_atak_own">Include my own position</string>
 <string name="p_atak_own_summary">Off: ATAK already shows you from the phone\'s GPS</string>

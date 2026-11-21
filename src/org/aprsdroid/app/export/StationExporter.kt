@@ -31,12 +31,29 @@ import java.net.InetAddress
 class StationExporter(
     private val ctx: Context,
     private val log: (type: Int, msg: String) -> Unit,
+    /** A chat typed in TAK for an APRS station: send [parts] to [call] as APRS messages, in order. */
+    private val onChatToAprs: (call: String, parts: List<String>) -> Unit = { _, _ -> },
+    /** A marker placed in TAK that should go on the air as an APRS object. */
+    private val onMarker: (name: String, lat: Double, lon: Double, comment: String) -> Unit = { _, _, _, _ -> },
 ) : SharedPreferences.OnSharedPreferenceChangeListener {
 
     private val tag = "APRSdroid.Export"
     private val prefs = PrefsWrapper(ctx)
     private var scope: CoroutineScope? = null
-    private val queues = ArrayList<Channel<StationReport>>()
+    /** Each item is a [StationReport] or a ready-made CoT event (String). */
+    private val queues = ArrayList<Channel<Any>>()
+    private var inbound: TakInbound? = null
+    @Volatile private var chatEnabled = false
+    @Volatile private var markersEnabled = false
+
+    /** A TAK user who has written to an APRS station; replies go straight back to them. */
+    private data class Peer(val uid: String, val name: String)
+    private val peers = HashMap<String, Peer>()
+    @Volatile private var lastPeer: Peer? = null
+    private val seenEvents = object : LinkedHashMap<String, Boolean>() {
+        override fun removeEldestEntry(e: MutableMap.MutableEntry<String, Boolean>?) = size > 200
+    }
+    private val markerSent = HashMap<String, Triple<Double, Double, Long>>()
     private val sinks = ArrayList<StationSink>()
     private var multicastLock: WifiManager.MulticastLock? = null
     @Volatile private var cotConfig = CotConfig()
@@ -55,6 +72,12 @@ class StationExporter(
 
         /** Same report (call + position) within this window is not re-sent. */
         private const val DEDUPE_MS = 5_000L
+
+        /** An unmoved TAK marker is put on the air again no sooner than this. */
+        private const val MARKER_REPEAT_MS = 10 * 60_000L
+        const val DEFAULT_LISTEN_PORT = 4349
+        private const val PEER_UID = "takpeer.uid"
+        private const val PEER_NAME = "takpeer.name"
 
         @JvmStatic
         fun clientP12(ctx: Context): File = File(ctx.filesDir, CLIENT_P12)
@@ -97,7 +120,81 @@ class StationExporter(
         }
     }
 
+    /**
+     * Show an APRS message received for this station in TAK's chat, as coming
+     * from that station's contact. Goes straight to the TAK user who last
+     * wrote to that station (or last wrote at all); to "All Chat Rooms" until
+     * someone has.
+     */
+    fun offerMessage(fromCall: String, text: String, messageId: String?) {
+        if (!chatEnabled || text.isBlank()) return
+        val cfg = cotConfig
+        val call = fromCall.trim().uppercase()
+        val peer = synchronized(peers) { peers[call] } ?: lastPeer
+        val xml = CotChatEncoder.encode(
+            fromUid = cfg.uidPrefix + call,
+            fromCallsign = call + cfg.nameSuffix,
+            toUid = peer?.uid ?: CotChatEncoder.ALL_CHAT,
+            toName = peer?.name ?: CotChatEncoder.ALL_CHAT,
+            text = text,
+            messageId = (messageId?.takeIf { it.isNotBlank() } ?: "x") + "-" + System.currentTimeMillis().toString(36),
+        )
+        synchronized(this) {
+            for (q in queues) q.trySend(xml)
+        }
+    }
+
+    /** One CoT event from TAK (from the local listener or the server stream). */
+    private fun handleInbound(xml: String, local: Boolean) {
+        val ev = CotParser.parse(xml) ?: return
+        val prefix = cotConfig.uidPrefix
+        val chat = ev.chat
+        if (chat != null) {
+            if (!chatEnabled) return
+            // Never relay our own APRS-to-TAK chats back out.
+            if (chat.senderUid.startsWith(prefix)) return
+            val call = TakBridgeRules.aprsCall(chat.recipientUid, prefix) ?: return
+            synchronized(seenEvents) { if (seenEvents.put(ev.uid, true) != null) return }
+            val peer = Peer(chat.senderUid, chat.senderCallsign)
+            synchronized(peers) { peers[call] = peer }
+            rememberPeer(peer)
+            val parts = TakBridgeRules.split(chat.text)
+            if (parts.isEmpty()) return
+            log(PostEntity.TYPE_INFO, "TAK chat from ${chat.senderCallsign} to $call (${parts.size} message${if (parts.size == 1) "" else "s"})")
+            onChatToAprs(call, parts)
+            return
+        }
+        // ATAK on this phone announcing itself: now we know who to address.
+        if (local && ev.isTakClient && lastPeer == null && ev.callsign != null) {
+            rememberPeer(Peer(ev.uid, ev.callsign))
+            return
+        }
+        if (markersEnabled && TakBridgeRules.isPlacedMarker(ev, prefix)) {
+            val name = TakBridgeRules.objectName(ev.callsign) ?: return
+            val lat = ev.lat ?: return
+            val lon = ev.lon ?: return
+            if (lat !in -90.0..90.0 || lon !in -180.0..180.0 || (lat == 0.0 && lon == 0.0)) return
+            val now = System.currentTimeMillis()
+            synchronized(markerSent) {
+                val prev = markerSent[ev.uid]
+                if (prev != null && prev.first == lat && prev.second == lon && now - prev.third < MARKER_REPEAT_MS) return
+                markerSent[ev.uid] = Triple(lat, lon, now)
+            }
+            log(PostEntity.TYPE_INFO, "TAK marker \"$name\" sent as an APRS object")
+            onMarker(name, lat, lon, ev.remarks.orEmpty().take(40))
+        }
+    }
+
+    private fun rememberPeer(p: Peer) {
+        if (lastPeer == p) return
+        lastPeer = p
+        // Not under the "atak." prefix, so saving it does not restart the export.
+        prefs.prefs.edit().putString(PEER_UID, p.uid).putString(PEER_NAME, p.name).apply()
+    }
+
     private fun teardown() {
+        inbound?.stop()
+        inbound = null
         scope?.cancel()
         scope = null
         for (q in queues) q.close()
@@ -132,11 +229,30 @@ class StationExporter(
             includeInternet = prefs.getBoolean("atak.include_internet", true),
         )
         val cfg = { cotConfig }
+        chatEnabled = prefs.getBoolean("atak.chat", true)
+        markersEnabled = prefs.getBoolean("atak.objects_from_tak", false)
+        if (lastPeer == null) {
+            val uid = prefs.getString(PEER_UID, "")
+            if (uid.isNotEmpty()) lastPeer = Peer(uid, prefs.getString(PEER_NAME, uid))
+        }
+        val twoWay = chatEnabled || markersEnabled
 
         if (prefs.getBoolean("atak.udp.enabled", true)) {
             val host = prefs.getString("atak.udp.host", "127.0.0.1").trim().ifEmpty { "127.0.0.1" }
             val port = prefs.getStringInt("atak.udp.port", 4242)
-            sinks += CotUdpSink(host, port, cfg)
+            // ATAK on this phone reaches us on a loopback port of our own.
+            var endpoint: String? = null
+            if (twoWay && (host == "127.0.0.1" || host == "localhost")) {
+                val listenPort = prefs.getStringInt("atak.listen_port", DEFAULT_LISTEN_PORT)
+                try {
+                    inbound = TakInbound(listenPort) { xml -> handleInbound(xml, local = true) }.also { it.start() }
+                    if (chatEnabled) endpoint = "127.0.0.1:$listenPort:tcp"
+                } catch (e: Exception) {
+                    inbound = null
+                    log(PostEntity.TYPE_ERROR, "Cannot listen for ATAK on port $listenPort: ${e.message}")
+                }
+            }
+            sinks += CotUdpSink(host, port, cfg, endpoint)
             if (isMulticast(host)) acquireMulticastLock()
         }
         if (prefs.getBoolean("atak.tak.enabled", false)) {
@@ -148,12 +264,20 @@ class StationExporter(
                 try {
                     val ssl = TakTls.sslContext(clientP12(ctx))
                     val verify = prefs.getBoolean("atak.tak.verify_host", true)
-                    sinks += CotStreamSink("tls:$host:$port", TakTls.connector(host, port, ssl, verify), cfg)
+                    sinks += CotStreamSink(
+                        "tls:$host:$port", TakTls.connector(host, port, ssl, verify), cfg,
+                        endpoint = if (chatEnabled) "*:-1:stcp" else null,
+                        onEvent = if (twoWay) { xml -> handleInbound(xml, local = false) } else null,
+                    )
                 } catch (e: Exception) {
                     log(PostEntity.TYPE_ERROR, "TAK server TLS setup failed: ${e.message}")
                 }
             } else {
-                sinks += CotStreamSink("tcp:$host:$port", CotStreamSink.tcp(host, port), cfg)
+                sinks += CotStreamSink(
+                    "tcp:$host:$port", CotStreamSink.tcp(host, port), cfg,
+                    endpoint = if (chatEnabled) "*:-1:stcp" else null,
+                    onEvent = if (twoWay) { xml -> handleInbound(xml, local = false) } else null,
+                )
             }
         }
         if (sinks.isEmpty()) return
@@ -161,18 +285,22 @@ class StationExporter(
         val sc = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope = sc
         for (sink in sinks) {
-            val q = Channel<StationReport>(256, BufferOverflow.DROP_OLDEST)
+            val q = Channel<Any>(256, BufferOverflow.DROP_OLDEST)
             queues += q
             sc.launch { runSink(sink, q) }
         }
-        log(PostEntity.TYPE_INFO, "ATAK export: " + sinks.joinToString(", ") { it.name })
+        log(
+            PostEntity.TYPE_INFO,
+            "ATAK export: " + sinks.joinToString(", ") { it.name } +
+                (inbound?.let { ", listening on ${it.boundPort}" } ?: ""),
+        )
     }
 
-    private suspend fun runSink(sink: StationSink, q: Channel<StationReport>) {
+    private suspend fun runSink(sink: StationSink, q: Channel<Any>) {
         var failing = false
         for (r in q) {
             try {
-                sink.publish(r)
+                if (r is StationReport) sink.publish(r) else sink.publishRaw(r as String)
                 if (failing) {
                     failing = false
                     log(PostEntity.TYPE_INFO, "ATAK export ${sink.name}: connected")

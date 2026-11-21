@@ -167,10 +167,15 @@ class AprsService : Service() {
             }
             // ATAK / TAK export. Always created; it idles unless enabled in
             // settings, and picks up setting changes while running.
-            exporter = StationExporter(this) { type, msg ->
-                // addPost (not postAddPost): an export error must not stop the service.
-                handler.post { if (!destroyed) addPost(type, "ATAK", msg) }
-            }.also { it.start() }
+            exporter = StationExporter(
+                this,
+                log = { type, msg ->
+                    // addPost (not postAddPost): an export error must not stop the service.
+                    handler.post { if (!destroyed) addPost(type, "ATAK", msg) }
+                },
+                onChatToAprs = { call, parts -> queueMessages(call, parts) },
+                onMarker = { name, lat, lon, comment -> sendObject(name, lat, lon, comment) },
+            ).also { it.start() }
         } else {
             onPosterStarted()
         }
@@ -384,6 +389,47 @@ class AprsService : Service() {
 
     fun sendPacket(packet: APRSPacket) {
         sendPacket(packet, "")
+    }
+
+    /**
+     * Queue APRS messages to [call], in order (a chat from TAK). They go
+     * through the normal message queue, so they are retried and acked like
+     * any message typed in the app, and show up in that conversation.
+     */
+    fun queueMessages(call: String, parts: List<String>) {
+        serviceScope.launch {
+            try {
+                var ts = System.currentTimeMillis()
+                for (text in parts) {
+                    val msgId = db.messageDao().createMsgId(call)
+                    db.messageDao().insert(
+                        org.aprsdroid.app.data.MessageEntity(
+                            ts = ts++, // distinct, increasing: keeps the parts in order
+                            retrycnt = 0,
+                            call = call,
+                            msgid = msgId.toString(),
+                            type = org.aprsdroid.app.data.MessageEntity.TYPE_OUT_NEW,
+                            text = text,
+                        ),
+                    )
+                }
+                handler.post { if (!destroyed) msgService?.sendPendingMessages() }
+                sendBroadcast(Intent(MESSAGE).setPackage(packageName))
+            } catch (e: Exception) {
+                addPost(PostEntity.TYPE_ERROR, "ATAK", "Could not queue message to $call: ${e.message}")
+            }
+        }
+    }
+
+    /** Put a map point on the air as an APRS object (a marker placed in TAK). */
+    fun sendObject(name: String, lat: Double, lon: Double, comment: String) {
+        try {
+            // "/" table, "/" code: the plain red dot.
+            val pos = net.ab0oo.aprs.parser.Position(lat, lon, 0, '/', '/')
+            sendPacket(newPacket(ObjectPacket(name.padEnd(9), true, pos, comment)))
+        } catch (e: Exception) {
+            addPost(PostEntity.TYPE_ERROR, "ATAK", "Could not send object $name: ${e.message}")
+        }
     }
 
     fun sendPacketFinished(result: String) {

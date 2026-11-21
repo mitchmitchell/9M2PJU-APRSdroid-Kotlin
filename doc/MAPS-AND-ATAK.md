@@ -89,3 +89,35 @@ Its replacement is in this repository at
 The original had no network timeouts, which could freeze the app when a tile
 request stalled, and crashed on a response that was not a 256x256 image. To
 go back to the stock class, restore the original jar and delete that file.
+
+## Two-way link: messages and markers
+
+Settings → ATAK / TAK export → **From TAK to APRS**.
+
+**Messages** (on by default once the export is on)
+
+- An APRS message addressed to you is also sent to TAK as a chat from that
+  station's contact (`APRS.<call>`). It goes directly to the TAK user who
+  last wrote to that station, or last wrote to any APRS station; until
+  someone has, it goes to *All Chat Rooms*.
+- Each exported station is a contact TAK can message. A chat typed in TAK to
+  one of them is transmitted as an APRS message through the normal message
+  queue (retries, acks, visible in the app's Messages). Text longer than 67
+  characters is cut into up to four messages. Chats to anyone else, and to
+  chat rooms, never go on the air.
+- ATAK on the same phone reaches the app on `127.0.0.1:4349` (TCP and UDP,
+  loopback only, port configurable). Through a TAK Server the chats come back
+  on the same TLS connection the stations go out on.
+
+**TAK markers as APRS objects** (off by default)
+
+- A marker a person placed in TAK is transmitted as an APRS object under
+  your callsign, named with the first nine characters of the marker's name.
+  An unmoved marker is repeated at most every ten minutes.
+- For ATAK on the same phone, add an output in ATAK (Settings → Network
+  Preferences → Manage Outputs): UDP, `127.0.0.1`, port 4349. From a TAK
+  Server, every marker the server forwards to you is eligible, so think
+  before turning this on with a busy server.
+
+You are the control operator for everything this sends over the radio,
+including text typed by another TAK user through a server.
